@@ -1,0 +1,58 @@
+import type { ChatCompletion, ChatMessage } from "./messages.js";
+
+/** Identifiers for every provider chovy-code knows how to talk to. */
+export type ProviderId =
+  | "openai"
+  | "anthropic"
+  | "gemini"
+  | "deepseek"
+  | "minimax"
+  | "glm"
+  | "kimi";
+
+/** Static descriptor for a provider (capabilities + default model). */
+export interface ProviderInfo {
+  id: ProviderId;
+  label: string;
+  /** Env var name that holds the API key. */
+  envKey: string;
+  /** Sensible default model id. */
+  defaultModel: string;
+  /** True if the provider supports streaming tokens. */
+  supportsStreaming: boolean;
+  /** True if the provider supports tool/function calling. */
+  supportsTools: boolean;
+}
+
+/** Options passed to a provider when making a request. */
+export interface ProviderRequestOptions {
+  model: string;
+  messages: ChatMessage[];
+  systemPrompt?: string;
+  /** Allowed tools, by name. The provider translates these into its own format. */
+  tools?: string[];
+  temperature?: number;
+  maxTokens?: number;
+  /** Optional abort signal for cancellation/timeouts. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Every provider adapter implements this. The runtime holds a registry of
+ * these keyed by ProviderId; new providers are added by implementing this
+ * interface and registering in `src/providers/index.ts`.
+ */
+export interface Provider {
+  readonly info: ProviderInfo;
+  /** Validate that the provider is usable (e.g. API key present). Throws if not. */
+  assertReady(): void;
+  /** Perform a single completion. */
+  complete(opts: ProviderRequestOptions): Promise<ChatCompletion>;
+  /** Stream a completion. Yields incremental text deltas as `string` and a final ChatCompletion. */
+  stream?(
+    opts: ProviderRequestOptions,
+  ): AsyncIterable<string | ChatCompletion>;
+}
+
+/** Aggregate type re-exports for callers. */
+export type { ChatCompletion, ChatMessage } from "./messages.js";

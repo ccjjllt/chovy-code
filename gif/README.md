@@ -1,0 +1,1 @@
+请阅读Terminal-GIF-Player-main源码，学习它的方法将"D:\Desktop\chovy-code\gif\2026-06-12_012827.GIF"、"D:\Desktop\chovy-code\gif\2026-06-12_012830.GIF"、"D:\Desktop\chovy-code\gif\2026-06-12_012832.GIF"、"D:\Desktop\chovy-code\gif\2026-06-12_012835.GIF"、"D:\Desktop\chovy-code\gif\2026-06-12_234328.GIF"这5个gif图转成终端显示。并把它作为chovy-code的吉祥物以及宠物，这5张gif图是它不同的动作。
