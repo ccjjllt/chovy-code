@@ -127,7 +127,10 @@ async function testAgentLoopCtx(): Promise<void> {
   };
 
   try {
-    await runAgent("hello", { provider: "openai" });
+    // bypassPermissions so the step-12 permission gate doesn't block the
+    // `echo hi` tool call — this test asserts ToolContext wiring, not the
+    // permission policy (covered by scripts/smoke-step12.ts).
+    await runAgent("hello", { provider: "openai", permissionMode: "bypassPermissions" });
   } finally {
     (bashTool as unknown as { run: typeof origRun }).run = origRun;
     (provider as { complete: typeof origComplete }).complete = origComplete;

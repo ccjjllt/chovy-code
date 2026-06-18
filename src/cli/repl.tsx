@@ -133,6 +133,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
       const final = await runAgent(t, {
         provider,
         model,
+        permissionMode: mode,
         onToken: (delta) => {
           if (cancelledRef.current) return;
           buf += delta;

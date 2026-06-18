@@ -12,6 +12,12 @@ import type {
   ToolContext,
   ToolSession,
 } from "../types/index.js";
+import {
+  createPermissionEngineState,
+  hasPermission,
+  permissionModeFromString,
+  type PermissionEngineState,
+} from "../harness/permissions/index.js";
 
 const DEFAULT_SYSTEM_PROMPT =
   "You are chovy-code, a coding agent. Answer concisely. " +
@@ -43,6 +49,12 @@ export interface AgentOptions {
   askUser?: ToolContext["askUser"];
   /** Honors `process.stdin.isTTY` by default; UI may override. */
   isInteractive?: ToolContext["isInteractive"];
+  /**
+   * Permission mode for this run (step-12). Defaults to `config.permissionMode`.
+   * The CLI resolves it from `--permission-mode` / env / config and passes it
+   * here; sub-agents (step-18) pass their own mode.
+   */
+  permissionMode?: string;
 }
 
 /**
@@ -53,6 +65,35 @@ export interface AgentOptions {
  *
  * Returns the assistant's final textual answer.
  */
+
+/**
+ * Adapter that satisfies the frozen `PermissionEngine.preflight?` handle on
+ * `ToolContext.permissions` (step-06) by delegating to the step-12 6-layer
+ * engine. Tools that call `ctx.permissions.preflight(name, args)` get the
+ * same decision the agent loop uses. The handle returns the lighter
+ * `PermissionPreflight` shape ({outcome, reason?, matchedRule?}).
+ *
+ * Defined at module scope so it closes over `getTool` without re-creating
+ * the closure per run; `permState`/`ctx` are passed in.
+ */
+async function runPreflight(
+  toolName: string,
+  args: unknown,
+  ctx: ToolContext,
+  permState: PermissionEngineState,
+): Promise<import("../types/index.js").PermissionPreflight> {
+  const tool = getTool(toolName);
+  if (!tool) {
+    return { outcome: "deny", reason: `unknown tool "${toolName}"` };
+  }
+  const decision = await hasPermission(tool, args, ctx, permState);
+  return {
+    outcome: decision.outcome,
+    reason: decision.reason,
+    matchedRule: decision.matchedRule,
+  };
+}
+
 export async function runAgent(prompt: string, opts: AgentOptions): Promise<string> {
   const provider = getProvider(opts.provider);
   provider.assertReady();
@@ -71,25 +112,44 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
   // Step-11 / step-16 prep: assemble a minimal ToolContext now so the v2
   // tools (bash / web_fetch / ask_user_question / agent / todo_write) can
   // honor abortSignal, ctx.session, ctx.askUser, etc. Step-16 owns the full
-  // wiring (memory, hooks, real permission engine); until then we provide
-  // the fields each meta/exec/web tool actually checks. Sub-agents get
-  // their OWN AbortController per AGENTS.md §9.
+  // wiring (memory, hooks); step-12 wires the real permission engine here.
+  // Sub-agents get their OWN AbortController per AGENTS.md §9.
   const cwd = process.cwd();
   const config = loadConfig();
   const session: ToolSession = { todoList: [] };
+  const isInteractive =
+    opts.isInteractive ?? (() => Boolean(process.stdin?.isTTY));
+
+  // Step-12 permission engine. The mode is resolved from the explicit option
+  // (CLI/REPL) or falls back to the config default. `dontAsk` mirrors the
+  // non-interactive flag so a one-shot `chat "..."` / sub-agent converts ask
+  // outcomes to deny instead of deadlocking on a prompt that never comes.
+  const permState: PermissionEngineState = createPermissionEngineState(
+    {
+      mode: permissionModeFromString(opts.permissionMode ?? config.permissionMode),
+      cwd,
+      dontAsk: !isInteractive(),
+    },
+    logger,
+  );
+
   const ctx: ToolContext = {
     cwd,
     abortSignal: opts.abortSignal ?? new AbortController().signal,
     logger,
-    // step-12 will replace these placeholder objects with the real engines.
-    permissions: {},
+    // step-12: real engine. The frozen `PermissionEngine.preflight?` handle
+    // delegates to `hasPermission` against the live `permState` below.
+    permissions: {
+      preflight: (toolName: string, args: unknown) =>
+        runPreflight(toolName, args, ctx, permState),
+    },
     hooks: {},
     config,
     sessionId: agentId,
     projectId: deriveProjectId(cwd),
     session,
     askUser: opts.askUser,
-    isInteractive: opts.isInteractive ?? (() => Boolean(process.stdin?.isTTY)),
+    isInteractive,
   };
 
   const messages: ChatMessage[] = [{ role: "user", content: prompt }];
@@ -156,6 +216,48 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
             role: "tool",
             toolName: call.name,
             content: `Error: invalid arguments — ${parsed.error.message}`,
+          });
+          continue;
+        }
+
+        // Step-12 permission gate: run the 6-layer engine before executing.
+        // `deny` (rules / safety / non-interactive ask) short-circuits the
+        // tool with a `TOOL_DENIED` result; `ask` in an interactive session
+        // would delegate to `ctx.askUser` once step-22 lands — today an ask
+        // outcome resolves to deny here because the engine already converts
+        // ask→deny when `isInteractive()` is false or `askUser` is absent.
+        const permDecision = await hasPermission(tool, parsed.data, ctx, permState);
+        if (permDecision.outcome === "deny") {
+          const startedAt = Date.now();
+          emitTelemetry({
+            type: "tool.call",
+            tool: call.name,
+            ok: false,
+            durMs: Date.now() - startedAt,
+          });
+          messages.push({
+            role: "tool",
+            toolName: call.name,
+            content: `Permission denied: ${permDecision.reason}`,
+          });
+          continue;
+        }
+        if (permDecision.outcome === "ask") {
+          // Reachable once step-22 wires ctx.askUser; the engine returns
+          // `ask` only in interactive contexts. Until then it resolves to
+          // deny inside the engine, so this branch is a forward-compat
+          // placeholder that treats an unresolved ask as a denial.
+          const startedAt = Date.now();
+          emitTelemetry({
+            type: "tool.call",
+            tool: call.name,
+            ok: false,
+            durMs: Date.now() - startedAt,
+          });
+          messages.push({
+            role: "tool",
+            toolName: call.name,
+            content: `Permission pending (ask): ${permDecision.reason}`,
           });
           continue;
         }

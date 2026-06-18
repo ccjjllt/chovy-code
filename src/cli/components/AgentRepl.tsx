@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import { Box, Text, useApp } from "ink";
 import { runAgent } from "../../agent/index.js";
 import type { ProviderId } from "../../types/index.js";
+import type { PermissionMode } from "../../config/index.js";
 import { StatusLine, type AgentStatus } from "./StatusLine.js";
 
 interface Props {
   prompt: string;
   provider: ProviderId;
   model?: string;
+  permissionMode?: PermissionMode;
 }
 
 /**
@@ -18,7 +20,7 @@ interface Props {
  * (An interactive REPL — multiple turns, input box — can layer on top of this
  * later; for now we run a single prompt to prove the wiring end to end.)
  */
-export function AgentRepl({ prompt, provider, model }: Props): React.ReactElement {
+export function AgentRepl({ prompt, provider, model, permissionMode }: Props): React.ReactElement {
   const { exit } = useApp();
   const [status, setStatus] = useState<AgentStatus>("thinking");
   const [answer, setAnswer] = useState("");
@@ -32,6 +34,7 @@ export function AgentRepl({ prompt, provider, model }: Props): React.ReactElemen
     runAgent(prompt, {
       provider,
       model,
+      permissionMode,
       onToken: (delta) => {
         if (cancelled) return;
         buf += delta;
@@ -62,7 +65,7 @@ export function AgentRepl({ prompt, provider, model }: Props): React.ReactElemen
     return () => {
       cancelled = true;
     };
-  }, [prompt, provider, model, exit]);
+  }, [prompt, provider, model, permissionMode, exit]);
 
   // ctrl+c handled by render({ exitOnCtrlC: true }) in TTY mode; the
   // process also self-exits when the run completes (see .finally above).

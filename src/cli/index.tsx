@@ -144,7 +144,7 @@ function startOneShot(prompt: string, ctx: ResolvedCtx): void {
       `permissionMode=${ctx.mode}`,
   );
   render(
-    <AgentRepl prompt={prompt} provider={ctx.provider} model={ctx.model} />,
+    <AgentRepl prompt={prompt} provider={ctx.provider} model={ctx.model} permissionMode={ctx.mode} />,
     { exitOnCtrlC: true },
   );
 }

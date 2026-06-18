@@ -95,14 +95,15 @@ export interface PermissionPreflight {
 // ── Runtime context ────────────────────────────────────────────────────────
 
 /**
- * Permission engine handle (placeholder until step-12).
+ * Permission engine handle (step-12).
  *
  * Tools should *not* call this directly today; they MAY rely on it being
- * present in `ToolContext` once step-12 lands. The interface is intentionally
- * thin so step-12 can extend it without breaking step-06 consumers.
- *
- * TODO step-12: replace with the real engine in
- * `src/harness/permissions/engine.ts`.
+ * present in `ToolContext` so they can re-query a decision (rare). The
+ * interface is intentionally thin: the agent loop runs the full 6-layer
+ * `hasPermission` (in `src/harness/permissions/engine.ts`) before every
+ * `tool.run`, and binds `preflight` here as a thin adapter that delegates
+ * to the same engine + live state. Downstream steps (13/14) extend the
+ * engine; this handle stays stable.
  */
 export interface PermissionEngine {
   /** Run the full 6-layer decision; step-12 supplies the implementation. */

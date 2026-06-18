@@ -53,6 +53,7 @@ chovy-code/
     ├── telemetry/            # 本地 JSONL telemetry sink
     ├── providers/            # registry + openai 参考实现 + 6 个 scaffold
     ├── tools/                # Tool v2 registry + ATP allocator + echo + fs / exec / web / meta 工具
+    ├── harness/              # 缰绳层：permissions（6 层引擎 + 5 模式 + 熔断器）
     └── types/                # provider / messages / tool 契约
 ```
 
@@ -62,7 +63,8 @@ step-06–07 的 Tool Protocol v2、lean/full 描述、工具注册元数据、A
 step-08 fs 工具（read/write/edit/glob/grep）；step-09 bash（AST + 双窗截断 + 单槽 hint + 跨平台 spawn + ctx.abortSignal 接通）；
 step-10 web（fetch + search + 自研 htmlToMd + 私网拒绝 + 跨域重定向不跟随 + 15min LRU）；
 step-11 meta（todoWrite / askUserQuestion + skill/agent stub）。Phase B 验收报告见 `docs/complete/step-06-11-phase-b-acceptance.md`。
-**未实现**：权限/沙箱（step-12/14）、hook 引擎（step-13）、QueryEngine（step-16）、子智能体真实运行（step-18/20）、记忆/checkpoint（step-24–28）、目标循环（step-23）、技能图（step-29）、所有非 openai provider 的真实网络接线（step-17）。
+step-12 权限引擎（6 层决策 + 5 模式 + 拒绝熔断器 + L1g bypass 免疫安全检查 + rules.json 加载/匹配），agent loop 每次 `tool.run` 前过 `hasPermission` 网关。完成报告见 `docs/complete/step-12-permission-engine.md`。
+**未实现**：沙箱（step-14）、hook 引擎（step-13）、QueryEngine（step-16）、子智能体真实运行（step-18/20）、记忆/checkpoint（step-24–28）、目标循环（step-23）、技能图（step-29）、所有非 openai provider 的真实网络接线（step-17）。
 
 ---
 
@@ -317,3 +319,16 @@ chovy log tail                   # 看 telemetry
 - 子 agent（step-18）**必须**为 `ctx.abortSignal` 创建独立 `AbortController`，不能共用父 agent 的 signal（AGENTS.md §9 既有红线，本步在 ctx 模型层面留好接口）。
 - `ask_user_question` 在 `ctx.askUser` 缺席时返回 `INTERNAL → step-22`，在非 TTY 下返回 `TOOL_DENIED`，**绝不**阻塞 stdin；step-22 落地 `AskUserOverlay` 时只接 `runAgent({askUser, isInteractive})`。
 - `todo_write` 的会话 todo 现在通过 `ctx.session.todoList` 存活（agent loop 注入空数组），module-level fallback 仅在裸调（如 smoke 脚本）时启用。
+
+## 18. Step 12 验收追记（权限引擎，2026-06-18）
+
+- step-12 已按 `docs/complete/step-12-permission-engine.md` 完成构建与验收。6 层决策 + 5 模式 + 拒绝熔断器落地于 `src/harness/permissions/`。
+- **`PermissionMode` 单源**：字面量联合**只在 `src/config/config.ts`** 声明；`src/harness/permissions/modes.ts` 仅 `export type { PermissionMode } from "../../config/index.js"`，**禁止**在 harness 层重声明字面量（与 §17 `AgentRole` 单源同例）。
+- **`PermissionEngine` 接口未改字段名**：step-06 冻结的 `preflight?(toolName, args)` 保持；agent loop 把 `hasPermission` 绑定为该 handle 的实现。step-13/14/22 的扩展**追加** `PermissionEngineState` 字段或新增调用点，不替换冻结接口。
+- **L1g 安全检查对所有模式免疫**（含 `bypassPermissions`）：`.gitconfig`/`.bashrc`/`.zshrc`/`.profile`/`.ssh`/`.aws/credentials`/`.git/`/`.chovy/secrets/`/`--no-verify` → deny；`git push --force`/`-f`/`--force-with-lease` → ask。这是 AGENTS.md §5 红线的代码化，step-14 沙箱在 engine 之下分层，**不得**绕过 L1g。
+- **L3/L4 调序**：`acceptEdits` 的 fs-mutate 自动放行与 `auto` 的安全工具放行必须**先于** `dontAsk→deny` 转换（L3），否则非交互 `acceptEdits`/`auto` 运行会把每次写/读都拒掉。deny 规则（L1a）与 safety deny（L1g）仍在最前。step-13 接 L5 hook 时维持此序。
+- **非交互 `default` 模式下 bash 普通命令被拒是预期行为**：bash preflight 对非只读命令返回 `ask`，非 TTY → ask→deny。用户需 `--permission-mode acceptEdits`/`bypassPermissions` 或写 allow 规则。**不要**为了让 `chat "..."` 跑 bash 而把 default 改成放行——安全默认优先。
+- **`auto` 模式无小模型**：白名单 + step-09 `isAllReadOnly` 命令分类，未识别回退 `ask`。`feature('auto.classifier')` 留桩，默认 off（AGENTS.md §5 红线 + innovations §10）。
+- **规则匹配 `g` 正则陷阱**：`matchWildcardPattern` 每次**新建** RegExp，不复用带 `g` 的实例（§16 既有追记的本步实例化）。
+- **rules.json 缺失静默**：`loadRulesFromPaths` 对 ENOENT 静默跳过（errno 从 `ChovyError.meta.errno` 提取，因 safeFs 把 node errno 包进 `MEMORY_IO`）；坏 JSON/坏行 warn + 跳过，不抛。
+- **harness→tools 边**：engine 只 reach `tools/exec/ast.js` + `tools/exec/classification.js` 两个零外部依赖纯函数叶子，不引入 tool registry，无循环。后续 harness 模块需复用 tools 纯函数时照此例 reach 叶子而非 barrel。
