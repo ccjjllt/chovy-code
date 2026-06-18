@@ -73,6 +73,11 @@ export const VERB_PATTERNS: Record<string, RegExp[]> = {
  */
 const VERB_HIT_WEIGHT = 0.4;
 
+function testPattern(re: RegExp, text: string): boolean {
+  re.lastIndex = 0;
+  return re.test(text);
+}
+
 // ---------------------------------------------------------------------------
 // 2. keywordHit
 // ---------------------------------------------------------------------------
@@ -103,11 +108,11 @@ export function keywordHit(tool: Tool, recent: ChatMessage[]): number {
     const text = m.content;
     if (!text) continue;
     for (const re of triggers) {
-      if (re.test(text)) return 1; // sticky max
+      if (testPattern(re, text)) return 1; // sticky max
     }
     if (best < VERB_HIT_WEIGHT) {
       for (const re of verbs) {
-        if (re.test(text)) {
+        if (testPattern(re, text)) {
           best = VERB_HIT_WEIGHT;
           break;
         }

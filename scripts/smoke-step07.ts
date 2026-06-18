@@ -119,6 +119,16 @@ const eFulls = e.filter((x) => x.level === "full").map((x) => x.name);
 console.log("CASE E (explorer role, neutral msg):");
 console.log("  full=", eFulls, " (expect glob/grep/read picked, one fs)");
 
+// --- Case F: zero budget → drop every positive-cost lean description ---
+const f = describeTools({
+  budgetTokens: 0,
+  recentMessages: [{ role: "user", content: "search all .ts files" }],
+  lastToolCalls: ["glob"],
+  agentRole: "explorer",
+});
+console.log("CASE F (budget=0):");
+console.log("  total=", f.length, " full=", f.filter((x) => x.level === "full").map((x) => x.name));
+
 // --- flush + verify telemetry ---
 sink.close();
 const files = readdirSync(tmp).filter((f) => f.endsWith(".jsonl"));
@@ -132,5 +142,8 @@ for (const f of files) {
     } catch { /* ignore */ }
   }
 }
-console.log("TELEMETRY: tools.described events written =", described, " (expect 5)");
+console.log("TELEMETRY: tools.described events written =", described, " (expect 6)");
+if (described !== 6) {
+  throw new Error(`expected 6 tools.described telemetry events, got ${described}`);
+}
 console.log("TMP DIR:", tmp);

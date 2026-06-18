@@ -264,14 +264,14 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
 
   /**
    * Execute the tool. v2 tools MUST return a `ToolResult`; legacy tools
-   * may return a `string` and the harness wraps it as
+   * may return a `string` (sync or async) and the harness wraps it as
    * `{ ok: true, content: <string> }`. The `ctx` argument is optional in
    * the type so legacy tools that ignore it keep compiling.
    */
   run(
     args: z.infer<T>,
     ctx?: ToolContext,
-  ): Promise<string | ToolResult>;
+  ): string | ToolResult | Promise<string | ToolResult>;
 
   /** Optional Ink renderer (step-22). */
   renderResult?: ToolRenderFn<z.infer<T>>;

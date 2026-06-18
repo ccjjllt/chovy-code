@@ -230,9 +230,9 @@ The harness preserves two shims so step-01 tools keep compiling:
 1. **Legacy `description` field.** A v1 tool with only
    `description: "..."` still loads. The legacy descriptor view in
    `describeToolsLegacy` reads `desc.lean ?? description`.
-2. **Legacy `run()` returning `string`.** The agent loop wraps a string
-   return as `{ ok: true, content: <string> }` before pushing it into the
-   message list. Tools that throw still produce
+2. **Legacy `run()` returning `string`.** The agent loop wraps a sync or
+   async string return as `{ ok: true, content: <string> }` before pushing
+   it into the message list. Tools that throw still produce
    `{ ok: false, content: "Error: ..." }`.
 
 You should NOT rely on either shim for new code — they exist purely to

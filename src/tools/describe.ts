@@ -154,6 +154,7 @@ interface WorkItem {
  * frozen since step-06; the body is the real ATP allocator.
  */
 export function describeTools(opts: DescribeOptions): DescribedTool[] {
+  const budgetCap = Math.max(0, opts.budgetTokens);
   const all = listTools({ enabled: true });
   const pool: Tool[] = opts.only
     ? all.filter((t) => opts.only!.includes(t.name))
@@ -181,12 +182,12 @@ export function describeTools(opts: DescribeOptions): DescribedTool[] {
   // -- lowest-scoring tools (with a warning) until we fit.                ---
   const droppedNames: string[] = [];
   let leanTotal = items.reduce((sum, w) => sum + w.leanCost, 0);
-  if (leanTotal > opts.budgetTokens && opts.budgetTokens > 0 && items.length > 0) {
+  if (leanTotal > budgetCap && items.length > 0) {
     const byScoreAsc = [...items].sort((a, b) =>
       a.score === b.score ? b.leanCost - a.leanCost : a.score - b.score,
     );
     const surviving = new Set(items.map((w) => w.tool.name));
-    while (leanTotal > opts.budgetTokens && byScoreAsc.length > 0) {
+    while (leanTotal > budgetCap && byScoreAsc.length > 0) {
       const drop = byScoreAsc.shift();
       if (!drop) break;
       droppedNames.push(drop.tool.name);
@@ -196,7 +197,7 @@ export function describeTools(opts: DescribeOptions): DescribedTool[] {
     items = items.filter((w) => surviving.has(w.tool.name));
     logger.warn("ATP: lean baseline exceeded budget; dropped low-relevance tools", {
       errorCode: "TOOL_BUDGET",
-      budgetTokens: opts.budgetTokens,
+      budgetTokens: budgetCap,
       droppedNames,
       remaining: items.length,
     });
@@ -211,7 +212,7 @@ export function describeTools(opts: DescribeOptions): DescribedTool[] {
   }));
 
   // -- Step 4: greedy upgrade by score desc, respecting headroom + family. --
-  let upgradeBudget = opts.budgetTokens - leanTotal;
+  let upgradeBudget = budgetCap - leanTotal;
   const upgradedFamilies = new Set<string>();
 
   if (upgradeBudget > 0 && items.length > 0) {
@@ -260,7 +261,7 @@ export function describeTools(opts: DescribeOptions): DescribedTool[] {
     full: fullCount,
     lean: out.length - fullCount,
     droppedCount: droppedNames.length,
-    budgetTokens: opts.budgetTokens,
+    budgetTokens: budgetCap,
     upgradeBudgetRemaining: Math.max(0, upgradeBudget),
     role,
   });

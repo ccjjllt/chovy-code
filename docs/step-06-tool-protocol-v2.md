@@ -156,7 +156,7 @@ export const echoTool: Tool = {
 - 所有现有工具能编译通过新接口；
 - `bun run typecheck` 通过；
 - `describeTools({ budgetTokens: 100, ... })` 在预算 100 时不会注入 full；
-- `Tool.run()` 旧返回 `string` 的工具被自动包装为 `{ok:true,content:string}`（兼容层）；后续工具用新格式。
+- `Tool.run()` 旧返回同步或异步 `string` 的工具被自动包装为 `{ok:true,content:string}`（兼容层）；后续工具用新格式。
 
 ## 参考源
 

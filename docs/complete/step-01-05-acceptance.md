@@ -38,6 +38,7 @@
 | A5 | provider readiness 只读 env，不读 secrets 文件 | `~/.chovy/secrets/<provider>` 会通过 CLI fail-fast，却在 provider.assertReady 再失败 | openai/scaffold provider 改用 `getSecret(provider)` |
 | A6 | `mem/agent/skill/log/provider` 子命令未走统一启动管线 | 子命令绕过 `CHOVY_HOME` 建目录、feature flag、permission mode 校验 | 所有子命令 action 统一通过 `resolveCtx()` |
 | A7 | 非 TTY 下无参 `chovy` 会触发 Ink raw-mode stack | CI/管道里输出不清晰，且退出像成功路径 | 非 TTY 直接输出 `CONFIG_INVALID`，提示使用 `chovy chat "..."` |
+| A8 | `resolveCtx()` 的 catch 把 `ChovyError` 转成 `.message` 字符串 | malformed `config.json` 等路径丢失 `chovy.error: <CODE>` 规范输出 | CLI 统一用 `logError(err)`，保留 Error 对象交给 logger 识别 |
 
 ---
 
@@ -54,6 +55,7 @@
 | 缺 key `chovy chat hello` | PASS，输出 `chovy.error: PROVIDER_NOT_READY ...` |
 | 非 TTY 无参 `chovy` | PASS，输出 `chovy.error: CONFIG_INVALID interactive REPL requires a TTY ...` |
 | `chovy --permission-mode nope provider list` | PASS，输出 `chovy.error: CONFIG_INVALID unknown --permission-mode ...` |
+| malformed `config.json` 后 `chovy provider list` | PASS，输出 `chovy.error: CONFIG_INVALID <path> is not valid JSON ...` |
 | `rg` 直接 fs 访问 | PASS，仅 `src/fs/safeFs.ts` 与 telemetry exit-hook 白名单仍直接触碰 `node:fs` |
 
 ---

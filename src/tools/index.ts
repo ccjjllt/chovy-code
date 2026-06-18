@@ -7,6 +7,7 @@ import {
   globTool,
   grepTool,
 } from "./fs/index.js";
+import { bashTool } from "./exec/index.js";
 
 /**
  * Built-in tool registration (step-06).
@@ -23,6 +24,9 @@ registerTool(fileWriteTool, { namespace: "fs" });
 registerTool(fileEditTool, { namespace: "fs" });
 registerTool(globTool, { namespace: "fs" });
 registerTool(grepTool, { namespace: "fs" });
+
+// step-09: bash executor.
+registerTool(bashTool, { namespace: "exec" });
 
 // ── Public surface ─────────────────────────────────────────────────────────
 

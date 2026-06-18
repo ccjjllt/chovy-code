@@ -9,7 +9,7 @@
 
 ---
 
-## 0. 项目当前状态（脚手架已就绪）
+## 0. 项目当前状态（Phase A + B1 已验收）
 
 ```
 chovy-code/
@@ -28,12 +28,14 @@ chovy-code/
     ├── config/                # zod 校验的 env 配置
     ├── logger/                # leveled logger
     ├── providers/             # registry + openai 参考实现 + 6 个 scaffold
-    ├── tools/                 # registry + echo 参考工具
+    ├── tools/                 # Tool v2 registry + ATP allocator + echo + fs tools
     └── types/                 # ChatMessage / Tool / Provider 等契约
 ```
 
-**已完成**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop 与流式 UI。
-**未实现**：真实工具、权限/沙箱、子智能体、记忆、目标循环、上下文管理、技能、所有非 OpenAI provider 的真实接线。
+**已完成**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop 与流式 UI；
+Phase A（step-01–05）验收追补；B1（step-06 Tool Protocol v2 + step-07 ATP allocator）验收追补。
+仓库中已有 step-08 fs tools 产物与完成报告，继续依赖前应按 step-08 文档单独验收。
+**未实现**：exec/web/meta 真实工具、权限/沙箱、子智能体、记忆、目标循环、上下文管理、技能、所有非 OpenAI provider 的真实接线。
 
 ---
 

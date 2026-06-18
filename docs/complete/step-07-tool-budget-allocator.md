@@ -156,7 +156,10 @@ CASE D (empty msgs, no recency):
 CASE E (explorer role, neutral msg):
   full= [ "glob" ]                                          ✅ 角色亲和度独立触发升级
 
-TELEMETRY: tools.described events written = 5  (expect 5)  ✅
+CASE F (budget=0):
+  total= 0  full= []                                        ✅ 零预算裁掉正成本 lean 描述
+
+TELEMETRY: tools.described events written = 6  (expect 6)  ✅
 ```
 
 ### 4.3 `bun run typecheck`
@@ -214,7 +217,8 @@ EXIT=0（包括 `scripts/smoke-step07.ts` 也通过 `noUnusedLocals`）。
 - [x] smoke CASE C（budget=100 lean 超额）→ `TOOL_BUDGET` warn + drop + 0 full
 - [x] smoke CASE D（空消息 + 无 recency）→ 0 升级
 - [x] smoke CASE E（explorer role + 中立消息）→ 角色亲和度独立触发升级
-- [x] `tools.described` 事件 5 条全部写入 telemetry JSONL
+- [x] smoke CASE F（budget=0）→ 裁掉正成本 lean 描述
+- [x] `tools.described` 事件 6 条全部写入 telemetry JSONL
 - [x] `DescribeOptions` / `DescribedTool` 签名未破坏（B1 冻结面）
 - [x] 不修改 `bin/chovy.js` 与 `bin/chovy.js.map`
 - [x] 不引入新依赖

@@ -64,7 +64,7 @@ function resolveCtx(opts: CommonFlags): ResolvedCtx {
     ensureHomeDirs();
     ensureProjectDirs(process.cwd());
   } catch (err) {
-    logger.error(err instanceof Error ? err.message : String(err));
+    logError(err);
     process.exit(2);
   }
 
@@ -91,7 +91,7 @@ function resolveCtx(opts: CommonFlags): ResolvedCtx {
   try {
     config = loadConfig({ args });
   } catch (err) {
-    logger.error(err instanceof Error ? err.message : String(err));
+    logError(err);
     process.exit(2);
   }
 
@@ -262,7 +262,7 @@ providerCmd.command("list").description("列出已注册 provider")
   });
 
 program.parseAsync(process.argv).catch((err: unknown) => {
-  logger.error(err instanceof Error ? err.message : String(err));
+  logError(err);
   process.exit(1);
 });
 
@@ -296,4 +296,8 @@ function safeProviderLabel(id: ProviderId): string {
   } catch {
     return id;
   }
+}
+
+function logError(err: unknown): void {
+  logger.error(err instanceof Error ? err : new Error(String(err)));
 }

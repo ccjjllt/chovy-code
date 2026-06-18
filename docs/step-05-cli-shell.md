@@ -116,3 +116,4 @@ const slashes: Record<string, { handler: SlashHandler; help: string }> = {
 
 - 所有子命令 action 都必须走统一 `resolveCtx()` 启动管线，确保 feature flag、permission mode、`CHOVY_HOME` 与 config 校验行为一致。
 - 非 TTY 下无参 `chovy` 必须拒绝进入 REPL 并输出明确 `CONFIG_INVALID`，避免 Ink raw-mode stack 泄露到用户界面；非交互场景使用 `chovy chat "..."`。
+- `resolveCtx()` / commander 顶层 catch 捕获 `ChovyError` 时必须把 Error 对象原样传给 logger，不能先转为 `.message` 字符串；否则 malformed config 等路径会丢失 `chovy.error: <CODE>` 规范输出。

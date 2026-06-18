@@ -65,6 +65,7 @@ const ROLE_AFFINITY: Record<AgentRole, Record<string, number>> = {
 
 - 如果 `tools.length > 30`，强制只升 top-K（K = floor(budget / avg_full_tokens)）。
 - 如果 lean 描述本身超出 budgetTokens（罕见），按 score 倒序裁工具（产生 `ChovyError('TOOL_BUDGET')` warning，仍返回部分）。
+- 如果 `budgetTokens <= 0`，按 0 预算处理：裁掉所有正 token 成本的 lean 描述，返回空或仅保留零成本描述，且记录 `TOOL_BUDGET` warning。
 - ATP 不影响 schema：schema 永远完整注入。
 
 ## 与 QueryEngine 的集成点
@@ -97,3 +98,4 @@ const toolsForProvider = described.map(d => ({ name: d.name, description: d.desc
 ## 风险
 
 - 评分模型过拟合 → 用简单加权 + telemetry 持续观测；不引入小模型评分（避免额外 API 调用）。
+- 工具作者的 `fullTriggers` 若使用带 `g` / `y` 标志的 RegExp，`test()` 会受 `lastIndex` 影响 → 匹配前必须复位 `lastIndex`。
