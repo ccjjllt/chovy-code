@@ -19,3 +19,4 @@ export { todoWriteTool, readTodoList, _resetTodoStoreForTesting } from "./todoWr
 export { askUserQuestionTool } from "./askUserQuestion.js";
 export { skillTool } from "./skill.js";
 export { agentTool } from "./agent.js";
+export { dispatchTool } from "./dispatch.js";

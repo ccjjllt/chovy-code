@@ -24,7 +24,7 @@ registerProvider(minimaxProvider);
 registerProvider(openaiProvider);
 
 // Public surface ────────────────────────────────────────────────────────────
-export { getProvider, listProviders } from "./registry.js";
+export { getProvider, listProviders, registerProvider, _unregisterProviderForTesting } from "./registry.js";
 export { scaffoldProvider } from "./scaffold.js";
 export {
   CAPS,

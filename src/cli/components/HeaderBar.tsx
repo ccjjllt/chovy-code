@@ -15,11 +15,20 @@ export interface BudgetSnapshot {
   ctxTotalTokens: number;
 }
 
+/** Optional swarm summary for the header's right side (step-22). When
+ *  undefined (no sub-agents ever spawned), the header omits the chip. */
+export interface SwarmSummary {
+  running: number;
+  done: number;
+}
+
 interface Props {
   mode: PermissionMode;
   provider: string;
   model: string;
   budget: BudgetSnapshot;
+  /** step-22: live sub-agent counts. Omit to hide the `swarm: NR/ND` chip. */
+  swarm?: SwarmSummary;
 }
 
 /** Mode → border color. Step-12 will share these with the permission engine. */
@@ -44,12 +53,15 @@ const MODE_LABEL: Record<PermissionMode, string> = {
  * the active provider/model, and a budget summary. Everything else in the
  * REPL flows beneath this.
  */
-export function HeaderBar({ mode, provider, model, budget }: Props): React.ReactElement {
+export function HeaderBar({ mode, provider, model, budget, swarm }: Props): React.ReactElement {
   const ratio = budget.ctxTotalTokens > 0
     ? Math.min(100, Math.round((budget.ctxUsedTokens / budget.ctxTotalTokens) * 100))
     : 0;
   const cost = budget.costUSD.toFixed(4);
   const color = MODE_COLORS[mode];
+  const swarmChip = swarm
+    ? `  swarm: ${swarm.running}R/${swarm.done}D`
+    : "";
 
   return (
     <Box
@@ -63,7 +75,7 @@ export function HeaderBar({ mode, provider, model, budget }: Props): React.React
         <Text dimColor>{`  ${provider}/${model}`}</Text>
       </Box>
       <Box>
-        <Text dimColor>{`ctx ${ratio}%  $${cost}`}</Text>
+        <Text dimColor>{`ctx ${ratio}%  $${cost}${swarmChip}`}</Text>
       </Box>
     </Box>
   );

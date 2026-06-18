@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）已完成构建并通过复验；下一步进入 Phase E（Sub-Agent System / SwarmR / Judge）**。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）已完成构建并通过复验；Phase E 进行中——step-18（子 Agent 运行时）+ step-20（SwarmR dispatch 核心）已落地，下一步 step-19（内置角色）/ step-21（Judge）/ step-22（UI）**。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -57,12 +57,14 @@ chovy-code/
     ├── providers/            # 7 真实 provider + PCM + 通用 SSE + toolFormat 适配
     ├── tools/                # Tool v2 registry + ATP allocator + echo + fs / exec / web / meta 工具
     ├── harness/              # 缰绳层：permissions / hooks / sandbox
+    ├── agent/                # runAgent / QueryEngine shim + 子 Agent 运行时（pool / lifecycle / snapshot / builtin）
+    ├── swarm/                # SwarmR：router / pool-wrapper / concurrency / budgets / progress bus
     └── types/                # provider / messages / tool 契约
 ```
 
-**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、9 个核心工具（fs / exec / web / meta）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）。
+**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 并发限流 + 全局预算熔断 + 进度/生命周期 bus）。
 各 Phase 的详细产物与验收结论见 `docs/complete/` 下对应报告；本文不逐步罗列。
-**未实现**：子智能体运行时（SubAgentHandle / lifecycle）、SwarmR + Judge、记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（对应 Phase E–I）。
+**未实现**：Judge 聚合（step-21）、子 Agent UI 面板（step-22）、记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（对应 Phase E 尾 + F–I）。
 
 ---
 
@@ -396,3 +398,46 @@ chovy log tail                   # 看 telemetry
 - step-16 spec §风险 + AGENTS.md §8：`src/engine/queryEngine.ts` ≤ 600 行。工具执行子流程（`executeToolCall` / `invokeTool`）已外提到 `src/engine/toolExecutor.ts`，保持主文件聚焦于"主循环 + 取消协议 + helper"。后续要新增主循环阶段（如 SCW 钩子）请优先扩展 helper，不要把逻辑塞回 queryEngine.ts。
 
 **engine→providers 边**：`engine/costTracker.ts` import `providers/capabilities.CAPS` 是允许的（叶子直达，避免循环）；engine 不应 import provider 的具体 `complete/stream` 实现，统一通过 `providers/getProvider(id)` 拿 `Provider` 接口。
+
+## 18. Phase E 不变量（Sub-Agent + SwarmR）
+
+> Phase E（step-18–22）产物/验收见 `docs/complete/step-20-swarm-router.md`。本节固化 step-20 SwarmR 跨步骤生效的不变量；step-21（Judge）/ step-22（UI）落地后追加对应小节。
+
+**单源规约**（接 §16/§17 同模式）：
+- `DispatchRole` / `JudgeSchemaName` → `src/swarm/router.ts`（step-20 冻结）；wire schema 的 `explore/plan/verify/critic/custom` 与 runtime `AgentRole`（`explorer/planner/...`）经 `toAgentRole()` 映射，**不**重声明 union。
+- `DispatchInput` / `DispatchOutput` / `DispatchChildResult` → `src/swarm/router.ts`（step-20 冻结，B4 屏障）；后续 step-21（Judge）/ step-23（goal）扩展**追加**字段，不替换。
+- **handle 状态 + `subagent.*` telemetry 单源仍在 `agent/pool.ts`**：swarm 模块是 handle 状态的*观察者*（poll cost/phase 发 swarmBus 事件），**不**是 telemetry 第二发射源。`swarm.dispatch` telemetry 只由 `dispatch()` 发射一次（n + parallelism）。
+- **swarmBus 是 UI 通道，非 telemetry**：`progress` / `lifecycle` 事件给 step-22 Ink 面板订阅；它们不写 `~/.chovy/telemetry/`，与 `subagent.spawn`/`subagent.end`/`swarm.dispatch` 互不替代。
+
+**冻结接口**（字段名不改，扩展只追加可选字段）：
+- `ToolContext.dispatchSwarm?: DispatchSwarmFn`（step-20 追加，§16 兼容）：QueryEngine 在 `role === "main"` 时通过 `setDispatchFnBuilder` 注入；子 agent 默认拿不到（避免递归 fan-out，step-20 显式留给后续 step opt-in）。
+- `DispatchInput.abortSignal?`：caller-controlled 取消；路由器用**本地** AC 包装（§9 红线）。
+- `DispatchOutput.stopReason`：`final` / `budgetExceeded` / `cancelled`（step-20 冻结；step-21 judge 失败不应新增 stopReason，走 `judgement` 字段）。
+
+**依赖图无环**：
+- `engine/queryEngine.ts` **不**直接 import `swarm/router`（会成环 engine → swarm → agent → engine）；沿用 step-18 `setSpawnFnBuilder` 间接注册模式：`setDispatchFnBuilder(builder)` 由 `agent/runAgent.ts` 在 import 时调用一次。
+- `swarm/pool.ts` 直接 reach `agent/pool.js`（**不**经 `agent/index` barrel）——barrel re-export `runAgent`，而 `runAgent` 落地 SwarmR 后 import `swarm/router`，会闭合环。reach 叶子模块保持 DAG（§16 `harness→tools` 边同模式）。
+
+**取消传播不变量（SwarmR）**：
+- 路由器**本地 AbortController** 包装外部 `input.abortSignal`（§9 红线代码化）；budget 超限 / 外部 abort 都 `ac.abort()`，不污染调用方 signal。
+- 子 agent AbortController 在 step-18 pool 内从 `parentCtx.parentSignal` cascade——**不**从路由器的 `ac` cascade。因此路由器在 `ac` abort 时**显式调** `swarmPool.cancelAll()` 把取消传播到所有未完成子 agent（外部 abort + 预算熔断两条路径都走这个 listener）。
+- 取消后 `stopReason='cancelled'`；未完成子 agent 状态 `cancelled`（pool 的 `runChild` 把 abort 映射为 cancelled，超时才映射为 failed）。
+
+**并发限流不变量**：
+- parallelism 由 `src/swarm/concurrency.ts` 自实现 p-limit 限流：slot 在 `run()` 中**恰好 claim 一次**（fast path 直接 `active++`；waiter 被 wake 后**重新检查** `active >= concurrency` 再 claim，避免双计数 / 超 cap）。
+- pool 的 100-active 硬上限仍在 step-18 pool（`MAX_SUB_AGENTS`）；路由器 `swarmPool.canFit(prompts)` 做预检——`prompts.length + activeCount ≤ 100` 否则抛 `AGENT_BUDGET_EXCEEDED`，**不**在 dispatch 中途才溢出。
+
+**全局预算不变量**：
+- `GlobalBudget` sticky trip：一旦 `totalUSD >= cap` 永久 `exceeded=true`，watchdog 每 100ms 轮询 handle 累计 cost 重算；trip 时 `cancelAll()`。
+- 预算在 **spawn 前**也检查（已 trip → 跳过 spawn + 标 cancelled），避免 budgetExceeded 后还继续 fan-out。
+- `budgetUSD` undefined / 非有限正数 → 预算 inert（`exceeded` 永远 false），对齐 QueryEngine `Infinity` 默认。
+
+**失败隔离不变量**：
+- 单个子 agent 失败**不**中断兄弟：其结果 slot `ok:false` + `status:'failed'`，judge（若启用）被告知"该角度无有效结论"。
+- 只有全局 budget 超限 / dispatch-level abort 取消整个 fan-out（`stopReason` 非_final）；单个失败保持 `stopReason='final'`。
+
+**Judge 留桩不变量（step-21 前）**：
+- `judge.enabled:true` 时 dispatch 仍成功——judge 步骤跳过，`judgement` 留 `undefined`，`logger.warn` 一条（可观测但不抛）。`TODO step-21` 标记在 `router.ts` 的 `JUDGE_NOT_IMPLEMENTED`。
+- step-21 落地时替换为 `runJudge(results, judgeOpts, parentCtx)`，返回 `JudgedAggregate`；**不**新增 `stopReason`，judge 失败走 `judgement` 字段 + `ok=false`。
+
+**per-prompt maxTokens 遗留**：wire schema 有 `maxTokens`，但 `SpawnInput` 当前只透传 `maxRounds`（step-18 pool 未实现 per-child token cap）。router 里 `TODO step-18 follow-up` 注释；字段保留在 schema 不删（step-20 spec 明列）。后续 step-18 扩展 `SpawnInput.maxTokens` 时 router 取消 TODO 即可。

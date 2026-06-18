@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useApp } from "ink";
+import { Box, Text, useApp, useInput } from "ink";
 import { runAgent } from "../agent/index.js";
+import { getSubAgentPool } from "../agent/index.js";
 import { listProviders } from "../providers/index.js";
 import { logger } from "../logger/index.js";
 import type { ProviderId } from "../types/index.js";
 import type { PermissionMode } from "../config/index.js";
-import { HeaderBar, type BudgetSnapshot } from "./components/HeaderBar.js";
+import { HeaderBar, type BudgetSnapshot, type SwarmSummary } from "./components/HeaderBar.js";
 import { MessageList, type UIMessage } from "./components/MessageList.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";
 import { StatusLine } from "./components/StatusLine.js";
+import { SwarmPanel } from "./components/SwarmPanel.js";
 import { InputBox } from "./inputBox.js";
+import { useSwarmState, swarmCounts } from "./state/swarmStore.js";
 import {
   slashCommands,
   listSlashEntries,
@@ -70,6 +73,39 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   const ctrlCArmedRef = useRef(false);
   const ctrlCTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // step-22: live sub-agent state for the SwarmPanel + HeaderBar chip.
+  // `CHOVY_NO_SWARM_PANEL=1` disables the panel entirely (Windows ConHost
+  // flicker workaround per spec §风险); the header chip still reflects
+  // counts so the user knows sub-agents are running.
+  const swarm = useSwarmState();
+  const panelDisabled = process.env["CHOVY_NO_SWARM_PANEL"] === "1";
+  const showPanel = !panelDisabled && swarm.agents.length > 0;
+  const [panelFocused, setPanelFocused] = useState(false);
+  const swarmSummary: SwarmSummary | undefined = swarm.agents.length > 0
+    ? swarmCounts(swarm.agents)
+    : undefined;
+
+  // Tab toggles focus between InputBox and SwarmPanel. When the panel isn't
+  // visible, focus stays on input. Tab is captured only when not busy so
+  // mid-run tabbing doesn't disrupt the input box.
+  useInput(
+    (input, key) => {
+      if (input !== "t" && !key.tab) return;
+      // Require the raw Tab key (Ink delivers it as key.tab with empty input
+      // on most terminals); accept "t" only when ctrl is held as a fallback.
+      if (!key.tab && !(key.ctrl && input === "t")) return;
+      if (busy) return;
+      setPanelFocused((v) => !v);
+    },
+    { isActive: showPanel && !busy },
+  );
+
+  // If the panel disappears (pool drained), drop focus back to input so the
+  // user isn't stuck in a focused-but-invisible state.
+  useEffect(() => {
+    if (!showPanel && panelFocused) setPanelFocused(false);
+  }, [showPanel, panelFocused]);
+
   const appendSystem = useCallback((content: string) => {
     setMessages((xs) => [...xs, { id: newId(), role: "system", content }]);
   }, []);
@@ -82,7 +118,17 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     setGoal: (g) => setGoal(g),
     exit: () => exit(),
     listProviders: () => listProviders().map((p) => p.info.id),
-    listAgents: () => [], // TODO step-22
+    // step-22: format the live pool handles for /agents. One line per
+    // handle with id / role / status / phase / cost, so the user can
+    // inspect without opening the panel (non-TTY friendly).
+    listAgents: () => {
+      const xs = getSubAgentPool().list();
+      if (xs.length === 0) return [];
+      return xs.map((h) => {
+        const cost = `$${(h.costUSD ?? 0).toFixed(4)}`;
+        return `${h.id}  ${h.role.padEnd(8)}  ${h.status.padEnd(9)}  ${h.phase}  ${cost}`;
+      });
+    },
     listSkills: () => [], // TODO step-29
   }), [appendSystem, exit]);
 
@@ -203,7 +249,13 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
 
   return (
     <Box flexDirection="column">
-      <HeaderBar mode={mode} provider={provider} model={model} budget={budget} />
+      <HeaderBar
+        mode={mode}
+        provider={provider}
+        model={model}
+        budget={budget}
+        swarm={swarmSummary}
+      />
 
       {goal ? (
         <Box paddingX={1}>
@@ -227,6 +279,18 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
         </Box>
       ) : null}
 
+      {showPanel ? (
+        <Box marginTop={1}>
+          <SwarmPanel
+            agents={swarm.agents}
+            budget={{ spent: swarm.budget.costUSD }}
+            focused={panelFocused}
+            onClose={() => setPanelFocused(false)}
+            onGoalToggle={() => setGoal((g) => (g ? null : "(toggle via panel)"))}
+          />
+        </Box>
+      ) : null}
+
       <Box marginTop={1}>
         <InputBox
           disabled={busy}
@@ -236,6 +300,9 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
           onCtrlC={onCtrlC}
         />
       </Box>
+      {panelFocused ? (
+        <Text dimColor>{"  (panel focused — Tab to return to input)"}</Text>
+      ) : null}
     </Box>
   );
 }

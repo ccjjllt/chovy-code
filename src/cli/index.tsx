@@ -14,6 +14,7 @@ import { logger } from "../logger/index.js";
 import { ensureHomeDirs, ensureProjectDirs } from "../fs/index.js";
 import { listProviders, getProvider } from "../providers/index.js"; // side-effect: registers providers
 import { listTools } from "../tools/index.js"; // side-effect: registers tools
+import { getSubAgentPool } from "../agent/index.js"; // step-22: pool singleton for `agent list`
 import { ChovyError } from "../types/errors.js";
 import { AgentRepl } from "./components/AgentRepl.js";
 import { ChovyRepl } from "./repl.js";
@@ -227,12 +228,25 @@ mem.command("search <query>").description("全文搜索记忆")
     logger.info(`memory search "${query}" — TODO step-25`);
   });
 
-// `chovy agent ...` — TODO step-22.
-const agent = program.command("agent").description("子 agent 操作（TODO step-22）");
+// `chovy agent ...` — step-22: list live sub-agent handles from the pool.
+const agent = program.command("agent").description("子 agent 操作（step-22）");
 agent.command("list").description("列出活跃子 agent")
   .action((...args: unknown[]) => {
     resolveCtxFromActionArgs(args);
-    logger.info("agent list — TODO step-22");
+    // Force the agent barrel to load so the pool singleton + telemetry are
+    // wired even though the CLI doesn't run a QueryEngine here.
+    void getSubAgentPool;
+    const xs = getSubAgentPool().list();
+    if (xs.length === 0) {
+      logger.info("（暂无活跃子 agent）");
+      return;
+    }
+    for (const h of xs) {
+      const cost = `$${(h.costUSD ?? 0).toFixed(4)}`;
+      logger.info(
+        `${h.id}  ${h.role.padEnd(8)}  ${h.status.padEnd(9)}  ${h.phase}  ${cost}`,
+      );
+    }
   });
 
 // `chovy skill ...` — TODO step-29.

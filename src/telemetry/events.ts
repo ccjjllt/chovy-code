@@ -20,7 +20,7 @@
 
 export type { AgentRole } from "../types/agent.js";
 export type { PromptShape } from "../prompts/fingerprint.js";
-import type { AgentRole } from "../types/agent.js";
+import type { AgentLifecycle, AgentRole } from "../types/agent.js";
 import type { PromptShape } from "../prompts/fingerprint.js";
 
 export type TelemetryEvent =
@@ -83,6 +83,34 @@ export type TelemetryEvent =
       tokensOut: number;
       cacheRead: number;
       cacheWrite: number;
+      ts: number;
+    }
+  | {
+      /**
+       * step-18: emitted exactly once when `pool.spawn` registers a new
+       * sub-agent handle. Single source is `src/agent/pool.ts`.
+       * `parentId` is the parent agent id (or main session id at the
+       * top level); `background: true` means the parent did not await.
+       */
+      type: "subagent.spawn";
+      id: string;
+      parentId: string;
+      role: AgentRole;
+      background: boolean;
+      ts: number;
+    }
+  | {
+      /**
+       * step-18: emitted exactly once when a sub-agent leaves `running`
+       * (`done` / `failed` / `cancelled`). Single source is the pool.
+       * `durMs` is wall-clock from `spawnedAt` to `finishedAt`.
+       */
+      type: "subagent.end";
+      id: string;
+      parentId: string;
+      status: AgentLifecycle;
+      costUSD: number;
+      durMs: number;
       ts: number;
     };
 

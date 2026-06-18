@@ -15,9 +15,13 @@
 
 export {
   QueryEngine,
+  setSpawnFnBuilder,
+  setDispatchFnBuilder,
   type QueryEngineDeps,
   type QueryRunOptions,
   type QueryRunResult,
+  type SpawnFnBuilder,
+  type DispatchFnBuilder,
   type StopReason,
 } from "./queryEngine.js";
 

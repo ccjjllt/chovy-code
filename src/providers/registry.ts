@@ -27,3 +27,15 @@ export function getProvider(id: ProviderId): Provider {
 export function listProviders(): Provider[] {
   return [...registry.values()];
 }
+
+/**
+ * Test-only escape hatch — pop a provider out of the registry. Returns
+ * the previous adapter so tests can re-install it after the test run.
+ * Production code paths never call this; the leading underscore makes
+ * the intent obvious in greps.
+ */
+export function _unregisterProviderForTesting(id: ProviderId): Provider | undefined {
+  const prev = registry.get(id);
+  registry.delete(id);
+  return prev;
+}

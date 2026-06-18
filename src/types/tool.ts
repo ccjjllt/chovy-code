@@ -125,17 +125,34 @@ export interface PermissionEngine {
 import type { HookEngine } from "./hook.js";
 
 /**
- * Sub-agent spawn function (placeholder until step-18).
+ * Sub-agent spawn function. Single source: `types/agent.ts` (step-18 freeze).
  *
- * The exact request/response shape is owned by step-18's sub-agent runtime;
- * the field is optional in `ToolContext` for now so tools that don't need
- * fan-out behavior compile cleanly.
+ * The legacy `(req: unknown) => Promise<unknown>` placeholder shipped in
+ * step-06 was replaced when step-18 froze `SubAgentHandle` / `SpawnInput`.
+ * `ToolContext.spawnSubAgent` now references the strong-typed contract.
  *
- * TODO step-18: replace with `(req: SpawnRequest) => Promise<SubAgentHandle>`.
+ * NOTE: only `import type` here — re-exporting via the barrel (which
+ * already wildcards `agent.ts`) would duplicate the export and break the
+ * barrel build (mirrors the `HookEngine` pattern below).
  */
-export type SpawnFn = (req: unknown) => Promise<unknown>;
+import type { SpawnFn } from "./agent.js";
 
 // ── Step-11 meta-tool plumbing ─────────────────────────────────────────────
+
+/**
+ * SwarmR dispatch entry exposed to tools (step-20). The dispatch meta tool
+ * calls `ctx.dispatchSwarm(...)` instead of re-implementing fan-out; the
+ * QueryEngine injects a handle bound to the live parent runtime context
+ * (mirroring the `spawnSubAgent` pattern). Absent for sub-agent runs and
+ * any context that hasn't wired SwarmR — the tool refuses with `INTERNAL`.
+ *
+ * Single source: the router lives in `src/swarm/router.ts`; this type is the
+ * thin contract so `types/tool.ts` doesn't import the swarm module (which
+ * would cycle swarm → types → swarm).
+ */
+export type DispatchSwarmFn = (
+  input: import("../swarm/router.js").DispatchInput,
+) => Promise<import("../swarm/router.js").DispatchOutput>;
 
 /**
  * A single todo entry (step-11 `TodoWrite`). Mirrors cc-haha's TodoWrite
@@ -231,6 +248,13 @@ export interface ToolContext {
   hooks: HookEngine;
   /** Sub-agent dispatch entry (step-18); absent for tools that don't fan out. */
   spawnSubAgent?: SpawnFn;
+  /**
+   * SwarmR dispatch entry (step-20). The dispatch meta tool fans N prompts
+   * out to N sub-agents via this handle. Absent for sub-agent runs (only the
+   * top-level `main` role gets one — see QueryEngine spawn wiring) so a
+   * sub-agent can't recursively dispatch without an explicit future opt-in.
+   */
+  dispatchSwarm?: DispatchSwarmFn;
   /** Live `ChovyConfig` snapshot. Tools MUST treat this as read-only. */
   config: ChovyConfig;
   /** Session id. Used by memory/telemetry/UI panels. */

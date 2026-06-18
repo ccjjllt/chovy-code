@@ -346,7 +346,7 @@ console.log("\n=== Step-11 meta tools smoke ===\n");
   );
 }
 
-// ── 9. Agent stub (no spawnSubAgent) ⇒ INTERNAL → step-18 ──────────────────
+// ── 9. Agent stub (no spawnSubAgent) ⇒ INTERNAL → no-runtime ───────────────
 {
   const ctx = makeCtx(); // no spawnSubAgent
   const r = await agentTool.run(
@@ -363,24 +363,37 @@ console.log("\n=== Step-11 meta tools smoke ===\n");
     JSON.stringify(r),
   );
   check(
-    "agent: stub points at step-18",
-    isToolResult(r) && /step-18/.test(r.content),
+    "agent: no-runtime msg references runtime / step-18 wiring",
+    isToolResult(r) && /spawnSubAgent|SwarmR|step-20/i.test(r.content),
   );
   const so = isToolResult(r) ? r.structuredOutput : null;
   check(
-    "agent: structuredOutput kind=stub step=step-18",
-    (so as { kind?: string })?.kind === "stub" &&
-      (so as { step?: string })?.step === "step-18",
+    "agent: structuredOutput kind=no-runtime",
+    (so as { kind?: string })?.kind === "no-runtime",
   );
 }
 
 // ── 10. Agent: ctx.spawnSubAgent wired ⇒ delegates ─────────────────────────
 {
   let receivedReq: unknown = null;
+  const fakeHandle: import("../src/types/index.js").SubAgentHandle = {
+    id: "sa_smoke001",
+    parentId: "smoke-step11",
+    role: "verifier",
+    prompt: "Run typecheck.",
+    status: "running",
+    phase: "running",
+    spawnedAt: Date.now(),
+    costUSD: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    background: true,
+    cancel: async () => {},
+  };
   const ctx = makeCtx({
     spawnSubAgent: async (req) => {
       receivedReq = req;
-      return { transcript: "sub-agent done", role: "Explore" };
+      return fakeHandle;
     },
   });
   const r = await agentTool.run(
@@ -398,13 +411,13 @@ console.log("\n=== Step-11 meta tools smoke ===\n");
     JSON.stringify(r),
   );
   check(
-    "agent: spawnSubAgent received args",
+    "agent: spawnSubAgent received SpawnInput with role=verifier",
     receivedReq != null &&
-      (receivedReq as { subagent_type?: string }).subagent_type === "Verify",
+      (receivedReq as { role?: string }).role === "verifier",
   );
   check(
-    "agent: result content stringifies sub-agent output",
-    isToolResult(r) && /sub-agent done/.test(r.content),
+    "agent: result content references background sub-agent id",
+    isToolResult(r) && /sa_smoke001/.test(r.content),
   );
 }
 

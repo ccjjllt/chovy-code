@@ -61,26 +61,44 @@ export async function runStream(
   reqOpts: ProviderRequestOptions,
   handlers: StreamHandlerOptions = {},
 ): Promise<StreamOutcome> {
+  const signal = handlers.abortSignal;
+
+  // Forward our signal to the provider via the request options so it can
+  // wire it into the underlying fetch. Both fast and streaming paths use
+  // the wrapped options — earlier iterations only wired it on the streaming
+  // branch, which left non-streaming sub-agents (step-18) unable to cancel.
+  const reqWithSignal: ProviderRequestOptions = signal
+    ? { ...reqOpts, signal }
+    : reqOpts;
+
   // Non-streaming fast path.
   if (!provider.stream || !handlers.onToken) {
-    const completion = await provider.complete(reqOpts);
-    return {
-      completion,
-      streamedText: "",
-      aborted: handlers.abortSignal?.aborted ?? false,
-    };
+    try {
+      const completion = await provider.complete(reqWithSignal);
+      return {
+        completion,
+        streamedText: "",
+        aborted: signal?.aborted ?? false,
+      };
+    } catch (err) {
+      // Aborted fetches usually surface as AbortError / DOMException; the
+      // engine's loop then sees `aborted: true` and unwinds via the
+      // cancelled stop reason. Anything else is rethrown for the engine
+      // to wrap or surface.
+      if (signal?.aborted) {
+        return {
+          completion: synthesize(""),
+          streamedText: "",
+          aborted: true,
+        };
+      }
+      throw err;
+    }
   }
 
   // Streaming path.
   let streamedText = "";
   let final: ChatCompletion | undefined;
-  const signal = handlers.abortSignal;
-
-  // Forward our signal to the provider via the request options. Step-17
-  // adapters are expected to wire this into their fetch call.
-  const reqWithSignal: ProviderRequestOptions = signal
-    ? { ...reqOpts, signal }
-    : reqOpts;
 
   try {
     for await (const chunk of provider.stream(reqWithSignal)) {

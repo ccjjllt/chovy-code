@@ -17,10 +17,64 @@
  * REPL imports keep working unchanged.
  */
 
-import { QueryEngine, type QueryEngineDeps, type QueryRunOptions, type QueryRunResult } from "../engine/index.js";
+import { QueryEngine, setSpawnFnBuilder, setDispatchFnBuilder, type QueryEngineDeps, type QueryRunOptions, type QueryRunResult } from "../engine/index.js";
 import { getProvider } from "../providers/index.js";
 import { logger } from "../logger/index.js";
-import type { AgentRole, ChatMessage, ProviderId, ToolContext, ToolResult } from "../types/index.js";
+import { getSubAgentPool } from "./pool.js";
+import { dispatch as swarmDispatch } from "../swarm/router.js";
+import type {
+  AgentRole,
+  ChatMessage,
+  ParentRuntimeCtx,
+  ProviderId,
+  SpawnFn,
+  SpawnInput,
+  ToolContext,
+  ToolResult,
+} from "../types/index.js";
+
+// ── step-18: register the sub-agent spawn factory ─────────────────────────
+//
+// Wired here (rather than in the barrel) so every entry point — REPL,
+// `chovy chat`, the legacy `agent/agent.ts` shim, and any direct
+// `runQuery(...)` consumer — picks up the registration without an extra
+// import. The registration is idempotent: re-importing the module
+// re-installs the same builder.
+//
+// The builder closes over the engine's *live* parent message array
+// (supplied via `parentCtx.parentMessages`) so the snapshot the child
+// receives reflects the parent's transcript at spawn time.
+setSpawnFnBuilder((parentCtx: ParentRuntimeCtx): SpawnFn => {
+  const pool = getSubAgentPool();
+  return (input: SpawnInput) => pool.spawn(input, { parentCtx });
+});
+
+// ── step-20: register the SwarmR dispatch factory ──────────────────────────
+//
+// Same indirection pattern as `setSpawnFnBuilder`: the engine never imports
+// `swarm/router` directly (that would cycle engine → swarm → agent → engine).
+// We register a builder here — imported from `swarm/router.js`, which only
+// reaches the leaf `agent/pool.js` (not the `agent/index` barrel that
+// re-exports `runAgent`), so the graph stays acyclic.
+//
+// The handle closes over the live parentCtx so a dispatch inherits the
+// parent snapshot + abort cascade exactly like a single spawn. The engine's
+// local AbortController (wrapping the parent's signal) is forwarded as the
+// dispatch `abortSignal` so cancelling the parent run cancels any in-flight
+// dispatch as well — without sharing the parent's signal object across the
+// dispatch's own spawns (each child still gets its own AC inside the pool).
+setDispatchFnBuilder((parentCtx: ParentRuntimeCtx): ToolContext["dispatchSwarm"] => {
+  return (input) =>
+    swarmDispatch(
+      // Forward the parent's abort signal as the dispatch abort signal so
+      // cancelling the parent run cancels any in-flight dispatch. Each
+      // child still gets its OWN AbortController inside the pool (the
+      // router wraps this signal in a local AC per AGENTS.md §9); the
+      // parent signal is only observed, never shared across spawns.
+      { ...input, abortSignal: input.abortSignal ?? parentCtx.parentSignal },
+      parentCtx,
+    );
+});
 
 export interface AgentOptions {
   provider: ProviderId;

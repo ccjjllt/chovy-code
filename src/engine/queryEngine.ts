@@ -60,8 +60,10 @@ import type {
   AgentRole,
   ChatMessage,
   ContextBudget,
+  ParentRuntimeCtx,
   PermissionPreflight,
   ProviderId,
+  SpawnFn,
   Tool,
   ToolContext,
   ToolResult,
@@ -157,6 +159,60 @@ export interface QueryEngineDeps {
 }
 
 // ---------------------------------------------------------------------------
+// Sub-agent spawn factory registration (step-18)
+// ---------------------------------------------------------------------------
+//
+// The agent layer (`src/agent/`) wires its sub-agent pool via
+// `setSpawnFnBuilder()` at module load time. We accept a builder rather
+// than a `SpawnFn` because the builder must close over the engine's *live*
+// message array (which only exists once `run()` starts and is internal to
+// the engine).
+//
+// Registration is module-level state (one-time write at import time) to
+// avoid a circular dependency: pool.ts → queryEngine.ts is fine, but
+// queryEngine.ts → pool.ts would cycle. The same pattern works for any
+// future "engine wants to call into agent layer" use.
+
+/** Builder: given a parent runtime context (with a *live* messages array
+ *  reference), return a SpawnFn the harness can attach to ToolContext. */
+export type SpawnFnBuilder = (parentCtx: ParentRuntimeCtx) => SpawnFn;
+
+let spawnFnBuilder: SpawnFnBuilder | null = null;
+
+/**
+ * Register the sub-agent spawn factory. Called once at import time by
+ * `src/agent/index.ts`. Passing `null` clears the registration (test-only).
+ */
+export function setSpawnFnBuilder(builder: SpawnFnBuilder | null): void {
+  spawnFnBuilder = builder;
+}
+
+/**
+ * Builder: given a parent runtime context, return a `dispatchSwarm` handle
+ * bound to it (step-20). The handle closes over the parent's live message
+ * array + abort signal so a dispatch inherits the parent snapshot and
+ * cascades cancellation the same way a single spawn does.
+ */
+export type DispatchFnBuilder = (
+  parentCtx: ParentRuntimeCtx,
+) => ToolContext["dispatchSwarm"];
+
+let dispatchFnBuilder: DispatchFnBuilder | null = null;
+
+/**
+ * Register the SwarmR dispatch factory (step-20). Called once at import
+ * time by `src/swarm/index.ts` wiring (mirrors `setSpawnFnBuilder`). The
+ * engine never imports the swarm module directly — doing so would create a
+ * cycle (engine → swarm → agent → engine), so the registration indirection
+ * keeps the dependency graph acyclic.
+ *
+ * Passing `null` clears the registration (test-only).
+ */
+export function setDispatchFnBuilder(builder: DispatchFnBuilder | null): void {
+  dispatchFnBuilder = builder;
+}
+
+// ---------------------------------------------------------------------------
 // Engine class
 // ---------------------------------------------------------------------------
 
@@ -216,6 +272,35 @@ export class QueryEngine {
 
     const session: ToolSession = { todoList: [] };
 
+    const messages: ChatMessage[] = [...opts.messages];
+
+    // Sub-agent spawn factory (step-18). The builder closes over the
+    // engine's live `messages` array so the snapshot the child receives
+    // reflects what the parent has seen up to the moment of the call.
+    // Sub-agents themselves don't get a builder by default (avoiding
+    // unintentional recursion until SwarmR / step-20 lands).
+    let spawnFn: SpawnFn | undefined;
+    // SwarmR dispatch handle (step-20). Built from a registered
+    // `dispatchFnBuilder` (same registration pattern as `spawnFnBuilder`)
+    // so the engine never statically imports `swarm/router` — that would
+    // cycle (engine → swarm → agent → engine). Only the top-level `main`
+    // role gets a dispatch handle; a sub-agent dispatching would recurse
+    // through the pool, and step-20 leaves that opt-in to a later step.
+    let dispatchSwarm: ToolContext["dispatchSwarm"] | undefined;
+    if (spawnFnBuilder && role === "main") {
+      const parentCtx: ParentRuntimeCtx = {
+        parentId: agentId,
+        parentRole: role,
+        parentProvider: opts.provider,
+        parentModel: model,
+        parentMode: permState.mode,
+        parentMessages: messages, // live ref — mutated as the run progresses
+        parentSignal: ac.signal,
+      };
+      spawnFn = spawnFnBuilder(parentCtx);
+      if (dispatchFnBuilder) dispatchSwarm = dispatchFnBuilder(parentCtx);
+    }
+
     // Build the runtime ToolContext once; round-level changes go through
     // `permState` / `hookEngine` not new ctx allocations.
     const ctx: ToolContext = {
@@ -242,6 +327,8 @@ export class QueryEngine {
             hctx as HookContext,
           ),
       },
+      spawnSubAgent: spawnFn,
+      dispatchSwarm,
       config,
       sessionId,
       projectId: deriveProjectId(cwd),
@@ -258,7 +345,8 @@ export class QueryEngine {
     // Tool pool selection: callers may inject a custom subset (sub-agents do).
     const toolPool = this.resolveToolPool(opts);
 
-    const messages: ChatMessage[] = [...opts.messages];
+    // (messages array is allocated above so the spawnFn closure picks up
+    // the live reference — see the step-18 spawn wiring before `ctx`.)
 
     // Track for ATP relevance.
     let lastToolCalls: string[] = [];

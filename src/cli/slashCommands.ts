@@ -90,7 +90,7 @@ export const slashCommands: Record<string, SlashEntry> = {
   },
 
   agents: {
-    help: "列出活跃子 agent（TODO step-22）",
+    help: "列出活跃子 agent（step-22）",
     handler: (_args, ctx) => {
       const xs = ctx.listAgents();
       ctx.appendSystem(xs.length ? xs.join("\n") : "（暂无活跃子 agent）");

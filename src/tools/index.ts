@@ -14,6 +14,7 @@ import {
   askUserQuestionTool,
   skillTool,
   agentTool,
+  dispatchTool,
 } from "./meta/index.js";
 
 /**
@@ -44,6 +45,9 @@ registerTool(todoWriteTool, { namespace: "meta" });
 registerTool(askUserQuestionTool, { namespace: "meta" });
 registerTool(skillTool, { namespace: "meta" });
 registerTool(agentTool, { namespace: "meta" });
+
+// step-20: SwarmR dispatch meta tool.
+registerTool(dispatchTool, { namespace: "meta" });
 
 // ── Public surface ─────────────────────────────────────────────────────────
 
