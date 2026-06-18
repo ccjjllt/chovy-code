@@ -236,22 +236,139 @@ program
     process.exit(code);
   });
 
-// `chovy mem ...` — TODO step-25.
-const mem = program.command("mem").description("记忆操作（TODO step-24/25）");
-mem.command("list").description("列出记忆条目")
-  .action((...args: unknown[]) => {
+// `chovy mem ...` — step-24 memory store CLI surface.
+//   list   : top records by layer/type/importance
+//   show   : pretty-print one record by id
+//   search : FTS5 + BM25 (mixed ranker by default)
+//   rebuild: wipe + re-parse all source files (recovery from corrupt .db)
+//   stats  : record count + DB size + degraded flag
+const mem = program.command("mem").description("记忆操作（step-24 store；step-25 注入）");
+mem
+  .command("list")
+  .description("列出记忆条目")
+  .option("--layer <l>", "filter by layer: project|checkpoint|notes|progress")
+  .option("--type <t>", "filter by type: decision|rule|fact|pref|snapshot|progress|note|reference")
+  .option("--limit <n>", "limit (default 20)", parseIntOpt)
+  .action(async (
+    options: { layer?: string; type?: string; limit?: number },
+    ...args: unknown[]
+  ) => {
     resolveCtxFromActionArgs(args);
-    logger.info("memory list — TODO step-25");
+    const { createMemoryStore, syncProject } = await import("../memory/index.js");
+    const store = await createMemoryStore({ cwd: process.cwd() });
+    await syncProject(process.cwd(), store);
+    const filter: { layer?: import("../types/index.js").MemoryLayer; type?: import("../types/index.js").MemoryType; limit?: number; projectId: string } = {
+      projectId: store.projectId,
+    };
+    if (options.layer) filter.layer = options.layer as import("../types/index.js").MemoryLayer;
+    if (options.type) filter.type = options.type as import("../types/index.js").MemoryType;
+    filter.limit = options.limit ?? 20;
+    const rows = await store.list(filter);
+    if (rows.length === 0) {
+      logger.info("（无匹配记忆）");
+      store.close();
+      return;
+    }
+    for (const r of rows) {
+      const tags = r.tags.length > 0 ? ` [${r.tags.join(",")}]` : "";
+      const head = r.content.replace(/\s+/g, " ").slice(0, 120);
+      logger.info(
+        `${r.id}  ${r.layer.padEnd(10)} ${r.type.padEnd(10)} imp=${String(r.importance).padStart(3)}  ${head}${tags}`,
+      );
+    }
+    store.close();
   });
-mem.command("show <key>").description("展示某个记忆条目")
-  .action((key: string, ...args: unknown[]) => {
+
+mem
+  .command("show <id>")
+  .description("展示某个记忆条目")
+  .action(async (id: string, ...args: unknown[]) => {
     resolveCtxFromActionArgs(args);
-    logger.info(`memory show ${key} — TODO step-25`);
+    const { createMemoryStore } = await import("../memory/index.js");
+    const store = await createMemoryStore({ cwd: process.cwd() });
+    const rows = await store.list({ projectId: store.projectId, limit: 10_000 });
+    const found = rows.find((r) => r.id === id);
+    if (!found) {
+      logger.warn(`memory show: id "${id}" not found`);
+      store.close();
+      process.exit(1);
+    }
+    logger.info(`id        ${found.id}`);
+    logger.info(`layer     ${found.layer}`);
+    logger.info(`type      ${found.type}`);
+    logger.info(`importance ${found.importance}`);
+    logger.info(`source    ${found.sourcePath}${found.sourceLine ? `:${found.sourceLine}` : ""}`);
+    logger.info(`tags      ${found.tags.join(", ")}`);
+    logger.info(`updated   ${new Date(found.updatedAt).toISOString()}`);
+    logger.info("---");
+    logger.info(found.content);
+    store.close();
   });
-mem.command("search <query>").description("全文搜索记忆")
-  .action((query: string, ...args: unknown[]) => {
+
+mem
+  .command("search <query>")
+  .description("全文搜索记忆（FTS5 BM25 + recency mix）")
+  .option("--bm25", "use pure BM25 ranking (default: mixed)")
+  .option("--limit <n>", "limit (default 10)", parseIntOpt)
+  .option("--layer <l>", "filter by layer")
+  .action(async (
+    query: string,
+    options: { bm25?: boolean; limit?: number; layer?: string },
+    ...args: unknown[]
+  ) => {
     resolveCtxFromActionArgs(args);
-    logger.info(`memory search "${query}" — TODO step-25`);
+    const { createMemoryStore, syncProject } = await import("../memory/index.js");
+    const store = await createMemoryStore({ cwd: process.cwd() });
+    await syncProject(process.cwd(), store);
+    const memQuery: import("../types/index.js").MemoryQuery = {
+      text: query,
+      ranker: options.bm25 ? "bm25" : "mixed",
+      limit: options.limit ?? 10,
+    };
+    if (options.layer) {
+      memQuery.layers = [options.layer as import("../types/index.js").MemoryLayer];
+    }
+    const rows = await store.search(memQuery);
+    if (rows.length === 0) {
+      logger.info("（无匹配）");
+      store.close();
+      return;
+    }
+    for (const r of rows) {
+      const head = r.content.replace(/\s+/g, " ").slice(0, 140);
+      const score = r.score !== undefined ? `score=${r.score.toFixed(3)} ` : "";
+      logger.info(`${score}${r.id}  ${r.layer}/${r.type} imp=${r.importance}  ${head}`);
+    }
+    store.close();
+  });
+
+mem
+  .command("rebuild")
+  .description("清表重建索引（恢复损坏的 memory.db）")
+  .action(async (...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
+    const { createMemoryStore, forceRebuild } = await import("../memory/index.js");
+    const store = await createMemoryStore({ cwd: process.cwd() });
+    const r = await forceRebuild(process.cwd(), store);
+    logger.info(
+      `mem rebuild: ${r.count} records in ${r.durMs}ms${r.degraded ? " (degraded — bun:sqlite missing)" : ""}`,
+    );
+    store.close();
+  });
+
+mem
+  .command("stats")
+  .description("展示当前 store 概况（条目数 + 路径 + degraded 标志）")
+  .action(async (...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
+    const { createMemoryStore } = await import("../memory/index.js");
+    const store = await createMemoryStore({ cwd: process.cwd() });
+    const c = await store.count({ projectId: store.projectId });
+    logger.info(`records   ${c}`);
+    logger.info(`path      ${store.path}`);
+    logger.info(`projectId ${store.projectId}`);
+    logger.info(`degraded  ${store.degraded ? "true (bun:sqlite missing)" : "false"}`);
+    store.close();
   });
 
 // `chovy agent ...` — step-22: list live sub-agent handles from the pool.

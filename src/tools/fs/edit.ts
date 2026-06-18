@@ -27,7 +27,7 @@
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 
-import { safeFs } from "../../fs/index.js";
+import { safeFs, isWithin, checkpointDir } from "../../fs/index.js";
 import { assertWritable } from "../../harness/sandbox/index.js";
 import { logger } from "../../logger/index.js";
 import { ChovyError } from "../../types/errors.js";
@@ -141,10 +141,36 @@ export const fileEditTool: Tool<typeof argsSchema> = {
       };
     }
 
+    // step-26 path sandbox: same as `file_write` — checkpoint-writer can
+    // only mutate paths under `~/.chovy/projects/<hash>/checkpoints/`.
+    // Belt-and-suspenders to the role's `allowedTools` allowlist; with the
+    // blind-write guard above, edit-without-read is also blocked, but a
+    // role hostile to its own confines could still chain read+edit on
+    // arbitrary files. This denies that path explicitly.
+    let allowOutsideCwd: string[] | undefined;
+    if (ctx?.agentRole === "checkpoint-writer") {
+      const allowedDir = checkpointDir(ctx.cwd);
+      if (!isWithin(allowedDir, path)) {
+        return {
+          ok: false,
+          content:
+            `Refused: checkpoint-writer can only edit under ${allowedDir} ` +
+            `(got: ${path}).`,
+          errorCode: "TOOL_DENIED",
+          meta: { durMs: Date.now() - t0 },
+        };
+      }
+      // Same allowlift as `file_write`: checkpoint dir lives outside cwd.
+      allowOutsideCwd = [allowedDir];
+    }
+
     // step-14 sandbox: physical write guard (same as file_write). Resolves
     // symlinks + refuses the blacklist / outside-cwd writes even when the
     // permission engine allowed the call.
-    const sandbox = assertWritable(path, { cwd: ctx?.cwd ?? process.cwd() });
+    const sandbox = assertWritable(path, {
+      cwd: ctx?.cwd ?? process.cwd(),
+      allowOutsideCwd,
+    });
     if (!sandbox.ok) {
       return {
         ok: false,

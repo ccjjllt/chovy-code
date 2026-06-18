@@ -19,6 +19,7 @@ import {
   listSlashEntries,
   type ReplCtx,
   type ReplGoalRuntime,
+  type ReplCheckpointRuntime,
 } from "./slashCommands.js";
 import {
   createGoal,
@@ -28,6 +29,9 @@ import {
   type CreateGoalInput,
   type RunGoalResult,
 } from "../goals/index.js";
+import { getCheckpointCoordinator } from "../memory/index.js";
+import { checkpointDir } from "../fs/paths.js";
+import { safeFs } from "../fs/safeFs.js";
 import type { GoalState } from "../types/index.js";
 
 interface Props {
@@ -211,6 +215,64 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     setReplGoal: (g) => setGoalState(g ? { ...g } : null),
   }), [appendSystem, mode, model, provider]);
 
+  // ── step-26: REPL checkpoint runtime injected into ReplCtx.checkpoint ────
+  const checkpointRuntime: ReplCheckpointRuntime = useMemo(() => ({
+    triggerNow: async (): Promise<string> => {
+      // Snapshot the live message tail (bounded — coordinator caps further).
+      const recentMessages = messages.slice(-12).map((m) => ({
+        role: (m.role === "system" ? "user" : m.role) as
+          | "user"
+          | "assistant"
+          | "tool",
+        content: m.content,
+      }));
+      const result = await getCheckpointCoordinator().maybeCheckpoint(
+        "manual",
+        {
+          cwd: process.cwd(),
+          objective: goalState?.objective,
+          recentMessages,
+          historyTail: goalState ? goalState.history.slice(-5) : [],
+          provider,
+          model,
+          threadId: threadIdRef.current,
+        },
+      );
+      if (result.reason === "debounced") {
+        return "debounced (already checkpointed within last 30s)";
+      }
+      if (!result.ok) {
+        return `failed: ${result.error ?? "unknown"}`;
+      }
+      const tag = result.mode === "fallback" ? "fallback" : "ok";
+      return `${tag} (${result.bytes}B → ${result.latestPath})`;
+    },
+    list: async (): Promise<{ name: string; bytes: number; ts: string }[]> => {
+      const dir = checkpointDir(process.cwd());
+      let entries: string[];
+      try {
+        entries = await safeFs.list(dir, { recursive: false });
+      } catch {
+        return [];
+      }
+      const out: { name: string; bytes: number; ts: string }[] = [];
+      for (const entry of entries) {
+        const full = entry.startsWith(dir) ? entry : `${dir}/${entry}`;
+        if (!full.endsWith(".md")) continue;
+        const st = await safeFs.stat(full);
+        if (!st) continue;
+        const base = full.slice(dir.length + 1);
+        out.push({
+          name: base,
+          bytes: st.size,
+          ts: new Date(st.mtime).toISOString(),
+        });
+      }
+      out.sort((a, b) => (a.ts < b.ts ? 1 : -1));
+      return out;
+    },
+  }), [messages, goalState, provider, model]);
+
   const ctx: ReplCtx = useMemo(() => ({
     setMode: (m) => setMode(m),
     appendSystem,
@@ -233,7 +295,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     },
     listSkills: () => [], // TODO step-29
     goal: goalRuntime,
-  }), [appendSystem, exit, goalRuntime]);
+    checkpoint: checkpointRuntime,
+  }), [appendSystem, exit, goalRuntime, checkpointRuntime]);
 
   const runSlash = useCallback(async (line: string): Promise<void> => {
     const trimmed = line.replace(/^\//, "");

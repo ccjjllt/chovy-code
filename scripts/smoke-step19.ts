@@ -138,13 +138,33 @@ console.log("=== Step-19 built-in agents smoke ===\n");
   );
 }
 
-// ── 5. CheckpointWriter: step-26 placeholder ───────────────────────────────
+// ── 5. CheckpointWriter: step-26 finalized prompt ──────────────────────────
 {
   const def = getBuiltinAgent("checkpoint-writer");
   check("cp: role === checkpoint-writer", def?.role === "checkpoint-writer");
   const prompt = def?.getSystemPrompt(fakeCtx()) ?? "";
-  check("cp: prompt references step-26", /step-26/.test(prompt));
-  check("cp: prompt mentions 8KB cap", /8KB/.test(prompt));
+  // step-26 finalized the placeholder: the prompt now ships the 7-section
+  // template + hard rules (≤ 8 KB, file_write to latestPath only).
+  check(
+    "cp: prompt ships the file_write rule",
+    /file_write/.test(prompt) && /latestPath/.test(prompt),
+  );
+  check(
+    "cp: prompt mentions the 8 KB cap",
+    /8\s?KB/.test(prompt),
+  );
+  check(
+    "cp: prompt lists the 7 section headers (Goal / Done / In Progress / Decisions / Files touched / Open questions / Next)",
+    [
+      "## Goal",
+      "## Done in this session",
+      "## In Progress",
+      "## Decisions",
+      "## Files touched",
+      "## Open questions / Risks",
+      "## Next intended steps",
+    ].every((s) => prompt.includes(s)),
+  );
   check("cp: allowedTools includes file_write", def?.allowedTools?.includes("file_write") === true);
   check("cp: allowedTools includes file_read", def?.allowedTools?.includes("file_read") === true);
   check("cp: omitMemory === true", def?.omitMemory === true);

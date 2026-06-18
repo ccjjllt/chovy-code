@@ -2,6 +2,7 @@ import type { PermissionMode } from "../config/index.js";
 import type { CreateGoalInput, RunGoalResult } from "../goals/index.js";
 import type { GoalState } from "../types/index.js";
 import { goalSlashEntry } from "./slashCommands/goal.js";
+import { checkpointSlashEntry } from "./slashCommands/checkpoint.js";
 
 /**
  * Read-only/mutator surface that slash command handlers receive. Keeping
@@ -28,6 +29,13 @@ export interface ReplCtx {
    * provider/model + queryEngine wiring; the slash handler is UI-only).
    */
   goal?: ReplGoalRuntime;
+  /**
+   * step-26: checkpoint-writer runtime injected by the REPL. Absent in
+   * headless contexts — `/checkpoint` handler reports a clean error
+   * when undefined. The REPL owns provider/model/cwd binding so the
+   * slash handler stays UI-only (mirrors the §goal pattern).
+   */
+  checkpoint?: ReplCheckpointRuntime;
 }
 
 /**
@@ -49,6 +57,21 @@ export interface ReplGoalRuntime {
   findPausedGoal(): Promise<GoalState | null>;
   /** Notify the REPL UI of the new goal state (or clear). */
   setReplGoal(goal: GoalState | null): void;
+}
+
+/**
+ * Runtime hooks for `/checkpoint` (step-26). Same UI-only contract as
+ * `ReplGoalRuntime`: the REPL closes over `provider` / `model` / `cwd` /
+ * the live message tail and exposes the narrow surface the slash handler
+ * needs (`triggerNow` + `list`). The handler never imports
+ * `memory/checkpointWriter` directly so cli/slashCommands stays a leaf.
+ */
+export interface ReplCheckpointRuntime {
+  /** Force an immediate checkpoint via reason `'manual'`. Resolves with
+   *  a short user-visible status string ('ok' / 'fallback' / error msg). */
+  triggerNow(): Promise<string>;
+  /** List archived checkpoint files (basename + size + iso ts). */
+  list(): Promise<{ name: string; bytes: number; ts: string }[]>;
 }
 
 export type SlashHandler = (args: string, ctx: ReplCtx) => Promise<void> | void;
@@ -104,6 +127,8 @@ export const slashCommands: Record<string, SlashEntry> = {
   },
 
   goal: goalSlashEntry,
+
+  checkpoint: checkpointSlashEntry,
 
   mem: {
     help: "记忆操作 list/show/search（TODO step-24/25）",

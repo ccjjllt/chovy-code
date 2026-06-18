@@ -5,4 +5,5 @@
  */
 export * from "./types/index.js";
 export * as fs from "./fs/index.js";
+export * as memory from "./memory/index.js";
 export { version } from "./version.js";

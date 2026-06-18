@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）全部完成构建并通过复验；下一步进入 Phase G（step-24 Memory Store）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`（本轮修复 4 个跨 step 隐患 P3-P6）；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）、Phase G step-24（Memory Store：bun:sqlite + FTS5 + 4 类记忆）+ step-26（Checkpoint Writer：协调器 + 路径沙箱 + 7 段模板 + fallback）全部完成构建并通过复验；下一步进入 step-25（Memory Injection）+ step-27/28（SCW）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`；Phase G step-24 验收报告见 `docs/complete/step-24-acceptance.md`；step-26 验收报告见 `docs/complete/step-26-acceptance.md`。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -60,12 +60,13 @@ chovy-code/
     ├── agent/                # runAgent / QueryEngine shim + 子 Agent 运行时（pool / lifecycle / snapshot / builtin / outputBuffer / swarmBus）
     ├── swarm/                # SwarmR：router / pool-wrapper / concurrency / budgets / progress bus / judge / schemas
     ├── engine/               # QueryEngine 主循环 + costTracker + streamHandler + messageNormalize + toolExecutor + runtimeRegistry + runHelpers
-    └── types/                # provider / messages / tool / agent 契约
+    ├── memory/               # TMT 存储底层（store + parser + migrations + files + syncFromFiles + checkpointWriter）
+    └── types/                # provider / messages / tool / agent / memory 契约
 ```
 
-**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行 + 5 内置角色）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 自实现 p-limit 并发限流 + 全局预算 sticky-trip 熔断 + 进度/生命周期 bus）、Judge 聚合（4 schema + provider fallback 链 + tryFixJSON 五步修复 + ≤1 次自我修复 + 大 N 截断 + 取消独立 AC）、Ink UI 面板（SwarmPanel + AgentRow + AgentDetail + HotkeyBar + swarmStore + outputBuffer + Tab 焦点 + 16ms 节流）。
+**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行 + 5 内置角色）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 自实现 p-limit 并发限流 + 全局预算 sticky-trip 熔断 + 进度/生命周期 bus）、Judge 聚合（4 schema + provider fallback 链 + tryFixJSON 五步修复 + ≤1 次自我修复 + 大 N 截断 + 取消独立 AC）、Ink UI 面板（SwarmPanel + AgentRow + AgentDetail + HotkeyBar + swarmStore + outputBuffer + Tab 焦点 + 16ms 节流）、`/goal` 长程任务循环（GoalState 5-state + JSON 持久化 + Loop-driven Stop + rubric/command/hybrid 收敛 + 死循环兜底 + checkpoint per-5-rounds + GoalPanel + 3-way Tab 焦点 + headless 退出码）、**TMT 存储底层（4 类记忆 schema 冻结 + bun:sqlite + FTS5 unicode61 + BM25/mixed ranker + InMemoryStore 降级 + frontmatter+bullets parser + 增量 sync mtime 缓存 + forceRebuild + memoryFile/notesFile/progressFile + memory.index telemetry + chovy mem list/show/search/rebuild/stats）**、**Checkpoint Writer（CheckpointCoordinator 30s/reason 防抖 + 路径沙箱 via ToolContext.agentRole + 7 段 markdown 模板 + ≤50 归档轮转 + 规则化 fallback + checkpoint.written telemetry + /checkpoint now|list slash + goal-loop per-5-rounds 触发 + 取消独立 AC）**。
 各 Phase 的详细产物与验收结论见 `docs/complete/` 下对应报告；本文不逐步罗列。
-**未实现**：记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（Phase F–I）。
+**未实现**：跨会话注入（step-25）、上下文管理 SCW（step-27/28）、技能图 CSG（step-29）、端到端集成（step-30）。
 
 ---
 
@@ -249,6 +250,7 @@ chovy                            # 进入交互式 REPL
 chovy chat "..."                 # 一次性
 chovy goal "<objective>"         # 长程任务入口（step-23 前为占位）
 # REPL 内也可输入 /goal <objective>
+# REPL 内可输入 /checkpoint now | list   # step-26 强制生成 / 列归档
 chovy mem list|search|show       # 记忆查询
 chovy agent list                 # 列活跃子 agent（pool 快照）
 chovy agent list --builtins      # 列 step-19 注册的 5 内置角色 + ACL + memory
@@ -536,3 +538,104 @@ chovy log tail                   # 看 telemetry
 - `src/goals/*` import `engine/index` (QueryEngine) + `swarm/judge.tryFixJSON` + `tools/exec/bash.bashTool` + `harness/hooks/index.createHookEngine` + `agent` (SpawnFn type only)；**不**反向被 engine / providers / harness 依赖（goals 是叶子）。
 - `src/cli/repl.tsx` import `goals/index` 全套；`cli/slashCommands/goal.ts` 仅 import `goals/index` + 类型，**不**触 engine/providers（保持 UI-only）。
 - `src/cli/index.tsx` 通过动态 `import("./goalHeadless.js")` 加载头less runner，避免主 CLI bundle 把 `src/goals/` 都拉进来（lazy load）。
+
+## 20. Phase G 不变量（Memory Store — TMT 第一步）
+
+> Phase G step-24 产物/验收见 `docs/complete/step-24-acceptance.md`。本节固化 step-24 跨步骤生效的不变量；后续 step-25（注入）/ step-26（checkpoint-writer）/ step-27-28（SCW）扩展对应模块时必须遵守。
+
+**单源规约**（接 §16/§17/§18/§19 同模式）：
+- `MemoryLayer` / `MemoryType` / `MemoryRecord` / `MemoryQuery` / `MEMORY_LAYERS` / `MEMORY_TYPES` → `src/types/memory.ts`（step-24 B4 屏障冻结）；`src/memory/types.ts` 仅 re-export。后续 step-25/26 用 `import type` 复用，**禁止**重声明 union。
+- DDL 单源 = `src/memory/migrations.ts` 的 `MIGRATIONS_SQL` 字符串常量；**不**维护独立 `migrations.sql` 文件（避免 build.ts 拷贝资源 + bundle 路径解析的次生问题）。schema 变更必带新 migration step + bumpVersion；旧版本不删除（向后兼容老 .db）。
+- `memory.index` telemetry 单源 = `src/memory/store.ts:rebuild` + `createMemoryStore` 的 `init` + `syncFromFiles.ts:syncProject`；CLI / 上层模块**禁止**直接发射。`memory.injection` 留给 step-25（不在本步发）。
+- 文件 I/O 单源 = `safeFs`（不直接 `node:fs`），与 §9 红线一致；`mkdirp` / 原子 write 都走 safeFs。
+- size limits 单源 = 文件常量：`MAX_MEMORY_LINES=200` / `MAX_MEMORY_BYTES=25_000`（cc-haha 对齐）；`MAX_NOTES_LINES=500` / `MAX_NOTES_BYTES=64_000`；`PROGRESS_TAIL_BYTES=32_000`。
+
+**冻结接口**（字段名不改，扩展只追加可选字段）：
+- `MemoryRecord` / `MemoryQuery`（step-24 B4 冻结）：扩展**追加**字段；不改既有。`tags` 字段是非可选 `string[]`（默认 `[]`）—— 调用方可直接 `record.tags.includes(...)` 不必空守。`score` 是 runtime-only 字段（FTS 排序后填充），**永不**持久化。
+- `MemoryStore` 接口（step-24 §API 冻结）：`upsert` / `upsertMany` / `remove` / `removeBySource` / `list` / `search` / `rebuild` / `count` / `getIndexedMtime` / `setIndexedMtime` / `close`；扩展**追加**方法不替换签名。`degraded` / `path` / `projectId` 是只读属性，调用方用于 telemetry / UI 显示。
+
+**`bun:sqlite` 降级路径不变量**：
+- 探测一次（`cachedCtor: BunDatabaseCtor | null | undefined` 缓存），未探 = `undefined`、不可用 = `null`、可用 = 构造器；`_resetSqliteProbeForTesting` / `_forceInMemoryForTesting` 两个测试钩子不要在生产路径调用。
+- 缺失 → `InMemoryStore` + `logger.warn` + `memory.index { degraded: true, op: "init" }` telemetry；**不**抛 `CONFIG_INVALID`。让 step-25/26 注入路径仍能工作（最坏 = 空注入 + warn）。
+- InMemoryStore 的相关性分数 = `importance + countOccurrences * 5`（不是 BM25，但仍提供稳定 ranking 信号）；FTS 退化为 `content/tags.toLowerCase().includes(needle)`。
+
+**migrations 执行不变量**：
+- 用 `db.exec(MIGRATIONS_SQL)` **整块**执行 multi-statement DDL，**不**调 `splitStatements()` 逐句 exec。原因：FTS5 trigger 的 `BEGIN ... INSERT ... ; END;` 体内嵌入 `;`，朴素分割会破坏触发器创建（早期实现踩过这坑，全 case 静默降级到 InMemoryStore 才被发现）。`splitStatements` 仍作为公共 helper 导出（外部脚本可能要逐句执行）但主路径不用。
+- 每个 statement 用 `IF NOT EXISTS`，迁移再跑安全。schema_version 表用 `INSERT OR IGNORE` 写初值。
+
+**deterministic id 不变量**：
+- `mem_<sha1(projectId|sourcePath|sourceLine|content)[:12]>`（`store.normalizeRecord` → `generateId` 自动派发）。`upsert` 调用方传空 `id` 即触发派发；同一 bullet re-parse 产生同 id → upsert 而非重复入库（idempotent sync）。
+- `sourcePath` / `content` 为空（来自非文件源）→ 兜底 `mem_<random[12]>`，调用方需自管 id 唯一性。
+
+**rebuild / sync 不变量**：
+- `rebuild('')` 必须抛 `MEMORY_INDEX_CORRUPT`（防 SQL `WHERE project_id = ''` 误删全表）。
+- `rebuild(projectId, repopulate)` 用 `db.transaction()` 包 `DELETE_PROJECT_SQL` + `DELETE_PROJECT_META_SQL` + `repopulate` 内的所有 INSERT；`repopulate` 是 caller-side I/O（`syncFromFiles.forceRebuild` 在事务**外**读文件 + 在事务内 collect → 灌库）—— 让长 I/O 不锁数据库。
+- `mtime` 缓存：`memory_index_meta(project_id, source_path)` PK；`syncProject` 命中（`stat.mtime <= cached`）跳过整个文件；不命中 → `removeBySource` + 重 parse + `upsertMany` + `setIndexedMtime`。`forceRebuild` 路径会清掉 `memory_index_meta`，事务后再用 stat 把所有 mtime 重新写回。
+- 单源失败（一个文件 parse 异常）→ warn + skip + 继续；**不**让一个坏文件阻塞项目级 sync。
+
+**FTS5 / ranker 不变量**：
+- tokenizer = `unicode61 remove_diacritics 2`（中文分词差但够用；spec §risks 提示后续可换 trigram，本步不做）。
+- `sanitizeFtsQuery` 把用户文本切 token + 引号包裹，避免 `MATCH` 解析错误（防 `:`、`*`、运算符注入）。
+- ranker 默认根据 `query.text` 是否存在切：有 text → 默认 `bm25`；无 text → 按 `importance DESC, updated_at DESC`（`ranker` 字段被忽略）。
+- mixed ranker 公式 = `0.7 * (-bm25(memories_fts)) + 0.3 * exp(-(now - updated_at) / 30d)`；`exp()` 在某些 sqlite 版本可能缺 → catch + fallback 到纯 BM25 + debug log（实际未触发，Bun 1.1+ 自带 math 扩展）。
+- `clampLimit`：默认 50，硬上限 1000；`<= 0` / NaN → 50；防 caller `limit:Infinity` 触发全表扫描。
+
+**`memory/*` → 叶子模块**：
+- 可被 `cli/index.tsx`（动态 import 实现 lazy load）+ 后续 step-25 `injection.ts` + step-26 checkpoint-writer + step-27/28 SCW 引用；
+- **不**反向 import `engine` / `providers` / `agent` / `swarm` / `goals`；
+- 与 §17 `engine→providers` 边、§18 `swarm/pool → agent/pool` 边同模式 —— 保持 DAG。
+- `src/index.ts` 加 `export * as memory from "./memory/index.js"` 后，外部消费方走命名空间 `memory.createMemoryStore(...)`，避免 barrel 被工具 / 类型污染。
+
+## 21. Phase G 不变量（Checkpoint Writer — TMT 第二步）
+
+> Phase G step-26 产物/验收见 `docs/complete/step-26-acceptance.md`。本节固化 step-26 跨步骤生效的不变量；后续 step-27/28（SCW）/ step-30（端到端）扩展对应模块时必须遵守。
+
+**单源规约**（接 §16/§17/§18/§19/§20 同模式）：
+- `ToolContext.agentRole?: AgentRole` → `src/types/tool.ts`（step-26 新增，§16 frozen-extension：纯可选，缺省视作 `"main"`，工具层做 role-aware 行为时**必须 opt-in** —— 只在 role 显式匹配时收紧，不在缺省时收紧）。
+- `checkpoint.written` telemetry 单源 = `src/memory/checkpointWriter.ts:maybeCheckpoint`；CLI / goal-loop / SCW **不**直接发此事件（与 §17 `agent.cost`、§20 `memory.index` 同模式）。
+- `CheckpointWritten` hook event 仍在 step-13 冻结的 12 事件 union 内（**不**扩 union）；advisory —— emit 失败 swallow，不影响 latest.md 已写盘。
+- 路径沙箱**仅在工具层**（`src/tools/fs/write.ts` + `src/tools/fs/edit.ts`），**永不在** prompt 文本里声明安全边界（AGENTS.md §16 "prompt 不是 security boundary"）。
+
+**冻结接口**（字段名不改，扩展只追加可选字段）：
+- `CheckpointCoordinator.maybeCheckpoint(reason, input)` / `CheckpointResult` / `CheckpointInput` / `CheckpointReason`（step-26 冻结，B6 屏障预留）：扩展**追加**字段；不改既有签名。reason 联合（`goal-round` / `manual` / `session-end` / `token-soft` / `big-event`）扩展只新增成员，不替换既有。
+- `ReplCheckpointRuntime`（step-26 追加到 `ReplCtx.checkpoint`，§16 兼容）：`triggerNow()` + `list()`；UI-only，不 leak provider/queryEngine/coordinator 引用（与 §19 `ReplGoalRuntime` 同模式）。
+
+**路径沙箱不变量**：
+- `agentRole === "checkpoint-writer"` 时 `file_write` / `file_edit` 校验 `path` 必须落在 `checkpointDir(ctx.cwd)` 内；越界 → `TOOL_DENIED`。
+- 同时把 `checkpointDir(cwd)` 加入 `assertWritable.allowOutsideCwd`（checkpoint dir 在 `~/.chovy/projects/<hash>/` 下，物理上在 cwd 之外 —— 不加 allowlift 会被 §16 L1g 物理沙箱拒绝）。**黑名单仍生效**：`~/.gitconfig` / `.ssh` / `.chovy/secrets` 等仍 hard-deny（防御纵深）。
+- 协调器写盘前做 `isWithin(dir, latest) && isWithin(dir, archive)` paranoia 校验（路径由协调器自身计算，正常不越界，但 cheap to keep honest）。
+
+**协调器不变量**：
+- **防抖 30s / per-reason**（`DEBOUNCE_WINDOW_MS = 30_000`）：同 reason 在窗口内第二次调用 → `{ ok:false, reason:"debounced" }`；不同 reason 互不抑制（manual + goal-round + token-soft 可同时触发）。防抖 map 进程内单例，`_resetCheckpointCoordinatorForTesting` 清空。
+- **轮转上限 50**（`MAX_ARCHIVE_FILES = 50`）：每次写盘后 `rotateArchive(cwd, 50)`，按 `mtimeMs` 降序保留前 N，余 `safeFs.remove`（remove 本身限制在 `~/.chovy` 内）；`latest.md` 不参与计数（永不轮转）。
+- **fallback 路径**：spawn 失败 / 超时 / 取消 / 输出空 body → `mode:"fallback"`，coordinator 用 `buildFallbackMarkdown` 写 7 段规则化模板（与 agent 输出同 schema，下游 SCW 解析无特例）。
+- **取消协议**（§9 红线代码化）：协调器本地 `new AbortController()` 包装 caller `parentSignal`；三层包装 `caller signal → coordinator AC → pool child AC → engine AC`，**绝不共享 signal 对象**。pre-aborted caller signal → 走 fallback，不抛。
+- **失败不致命**：所有 fs 异常 / hook emit 异常 / rotate 异常都 `try/catch + logger.warn`，coordinator 返回 `{ ok:false, error }` 而不抛给 caller（spec §性能："失败时 telemetry warn，不打断主流程"）。
+
+**调用契约**：
+- caller 用 `void coordinator.maybeCheckpoint(...)` fire-and-forget（goal-loop / REPL slash 都这么调）。coordinator 内部 `await pool.spawn({ background: false })`，但调用方不 await。
+- `triggerCheckpoint(goal, ctx)` 公共签名 step-23 冻结；step-26 只改实现（委托 coordinator），签名不变。`ctx.spawnFn` 保留作 backward-compat 但**忽略**（coordinator 自取 `getSubAgentPool()`）。
+
+**spawn 配置不变量**：
+- `role: "checkpoint-writer"`（step-19 冻结）；
+- `shareSession: false`（不再注入父 snapshot，避免循环；协调器已在 prompt 里塞了 historyTail + recentMessages）；
+- `background: false`（协调器要 await 结果决定 fallback / 写盘 / hook）；
+- `budgetUSD: 0.05` / `timeoutMs: 30_000` / `maxRounds: 4`（与 step-19 角色定义一致）。
+
+**子 agent 模板不变量**：
+- 7 段 markdown：`# Checkpoint <ISO>` / `## Goal` / `## Done in this session` / `## In Progress` / `## Decisions` / `## Files touched` / `## Open questions / Risks` / `## Next intended steps`。下游 SCW（step-27/28）按此 schema 解析。
+- ≤ 8 KB（`MAX_CHECKPOINT_BYTES = 8 * 1024`）；oversized → `truncateBody` 保留头尾各 ~3.5 KB + `[truncated …]` 标记。
+- agent 在 `file_write` 之后**也**把 markdown body 作为最终 assistant 消息输出（coordinator 用作 fallback 源）。
+
+**`subagent_type` enum 仍不含 checkpoint-writer**：`tools/meta/agent.ts` zod enum 只列 Explore/Plan/Verify/Critic；checkpoint-writer 由 coordinator / SCW 直接 `pool.spawn({ role: "checkpoint-writer" })` 调用，不暴露给主 agent（与 §18 step-19 不变量一致）。
+
+**依赖图无环**：
+- `src/memory/checkpointWriter.ts` import `agent/index`（`getSubAgentPool` + 类型）+ `fs`（`safeFs` / `checkpointDir` / `isWithin`）+ `harness/hooks`（类型）+ `telemetry`（emit）+ `types/agent`；**不**反向被 engine / providers / harness / goals 依赖。
+- `src/goals/checkpoint.ts` → `memory/checkpointWriter`（新增依赖，单向）；`goals/iterations.ts` → `goals/checkpoint.ts`（既有）。goals 仍是叶子。
+- `src/cli/slashCommands/checkpoint.ts` → 仅 `slashCommands` 类型（UI-only，与 `cli/slashCommands/goal.ts` 同模式）；`src/cli/repl.tsx` → `memory/checkpointWriter`（通过 `checkpointRuntime` 闭包注入，类似 `goalRuntime`）。
+- `src/tools/fs/write.ts` / `edit.ts` → `fs`（既有，新增 `checkpointDir` / `isWithin` import）+ 读 `ctx.agentRole`（types/tool.ts）；**不**引入新模块依赖。
+
+**token-soft / big-event 触发延迟到 SCW**：
+- coordinator 已接受 `'token-soft'` / `'big-event'` reason 入口；但实际触发判定（contextBudget > soft 阈值 / dispatch 完成 / 长 bash 完成）由 step-27/28 SCW 接通。本步**不**在 QueryEngine 内嵌触发点（避免 §17 queryEngine.ts ≤ 600 行硬限被破坏 + 避免 SCW 未落地前误触发）。
+
+

@@ -92,6 +92,23 @@ export type TelemetryEvent =
       ts: number;
     }
   | { type: "memory.injection"; bytes: number; entries: number; ts: number }
+  | {
+      /**
+       * step-24: emitted once per `store.rebuild()` or full `syncProject()`.
+       * Single source is `src/memory/store.ts` (and `syncFromFiles.ts` for
+       * incremental sync). `degraded:true` means `bun:sqlite` was unavailable
+       * and the InMemoryStore is being used (FTS5 disabled, LIKE fallback).
+       * `count` is the total record count after the operation; `durMs` is
+       * wall-clock for the rebuild/sync.
+       */
+      type: "memory.index";
+      projectId: string;
+      op: "rebuild" | "sync" | "init";
+      count: number;
+      durMs: number;
+      degraded: boolean;
+      ts: number;
+    }
   | { type: "swarm.dispatch"; n: number; parallelism: number; ts: number }
   | { type: "prompt.shape"; shape: PromptShape; ts: number }
   | {
@@ -156,6 +173,24 @@ export type TelemetryEvent =
       parentId: string;
       status: AgentLifecycle;
       costUSD: number;
+      durMs: number;
+      ts: number;
+    }
+  | {
+      /**
+       * step-26: emitted exactly once per checkpoint write. Single source
+       * is `src/memory/checkpointWriter.ts` — neither the agent itself nor
+       * the goal loop should emit it. `mode` distinguishes the agent-driven
+       * write (`agent`) from the rule-based fallback (`fallback`) used when
+       * the spawn fails / times out / produces an empty payload.
+       * `reason` mirrors the trigger source (`goal-round` / `manual` /
+       * `session-end` / `token-soft` / `big-event`).
+       */
+      type: "checkpoint.written";
+      path: string;
+      bytes: number;
+      reason: string;
+      mode: "agent" | "fallback";
       durMs: number;
       ts: number;
     };

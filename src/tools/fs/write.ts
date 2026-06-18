@@ -30,7 +30,7 @@
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 
-import { safeFs } from "../../fs/index.js";
+import { safeFs, isWithin, checkpointDir } from "../../fs/index.js";
 import { assertWritable } from "../../harness/sandbox/index.js";
 import { logger } from "../../logger/index.js";
 import { ChovyError } from "../../types/errors.js";
@@ -106,12 +106,43 @@ export const fileWriteTool: Tool<typeof argsSchema> = {
       };
     }
 
+    // step-26 path sandbox: when running as the `checkpoint-writer` role,
+    // confine writes to `~/.chovy/projects/<hash>/checkpoints/`. The role
+    // definition (`src/agent/builtin/checkpointWriterAgent.ts`) cannot
+    // express path predicates, so the enforcement lives here — defense in
+    // depth (the system prompt also instructs the agent, and the
+    // CheckpointCoordinator validates the artifact post-write). This
+    // matches AGENTS.md §16: role-aware behavior is a tool concern, not a
+    // permission rule.
+    let allowOutsideCwd: string[] | undefined;
+    if (ctx?.agentRole === "checkpoint-writer") {
+      const allowedDir = checkpointDir(ctx.cwd);
+      if (!isWithin(allowedDir, path)) {
+        return {
+          ok: false,
+          content:
+            `Refused: checkpoint-writer can only write under ${allowedDir} ` +
+            `(got: ${path}).`,
+          errorCode: "TOOL_DENIED",
+          meta: { durMs: Date.now() - t0 },
+        };
+      }
+      // The checkpoint dir lives under `~/.chovy/projects/<hash>/`, which is
+      // outside cwd. Lift the cwd-belonging guard for THIS write only by
+      // passing the dir as an explicit allow root — the blacklist is still
+      // applied, so secrets / git config / .ssh remain refused.
+      allowOutsideCwd = [allowedDir];
+    }
+
     // step-14 sandbox: physical write guard. Backstops the permission
     // engine's L1g safety check (which inspects only the literal path) by
     // resolving symlinks and refusing writes to the blacklist + outside
     // cwd. Even `bypassPermissions` can't escape this — the engine may
     // allow, but the tool refuses to write (spec §与权限引擎的关系).
-    const sandbox = assertWritable(path, { cwd: ctx?.cwd ?? process.cwd() });
+    const sandbox = assertWritable(path, {
+      cwd: ctx?.cwd ?? process.cwd(),
+      allowOutsideCwd,
+    });
     if (!sandbox.ok) {
       return {
         ok: false,

@@ -301,6 +301,12 @@ export class QueryEngine {
       session,
       askUser: opts.askUser,
       isInteractive,
+      // step-26: identify the agent's role to tools so they can do
+      // role-aware checks (e.g. checkpoint-writer's path sandbox in
+      // file_write / file_edit). The pool plumbs `handle.role` through
+      // QueryRunOptions.agentRole; legacy callers leave it undefined and
+      // the tool-side fallback treats that as "main".
+      agentRole: role,
     };
 
     const cost = new CostTracker({

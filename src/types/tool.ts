@@ -287,6 +287,25 @@ export interface ToolContext {
    * instead of deadlocking waiting for stdin.
    */
   isInteractive?: IsInteractiveFn;
+
+  /**
+   * step-26 addition (frozen-extension; AGENTS.md §16).
+   *
+   * Identifies the role of the agent that owns this `ToolContext`. The agent
+   * loop (`engine/queryEngine.ts`) populates it from `QueryRunOptions.agentRole`
+   * — the pool plumbs `handle.role` through for sub-agents; the main loop
+   * leaves it as `"main"` (or undefined for legacy callers). Tools may use
+   * it to do role-aware behavior (least-privilege checks, role-scoped
+   * formatting). Specifically:
+   *
+   *   - `file_write` / `file_edit` deny writes outside `checkpointDir(cwd)`
+   *     when `agentRole === "checkpoint-writer"` (step-26 path sandbox).
+   *
+   * Treat `undefined` as "main" for permissive behavior (back-compat with
+   * any in-tree call site that hasn't been updated). New role-gated checks
+   * MUST be opt-in (deny only when role explicitly matches).
+   */
+  agentRole?: import("./agent.js").AgentRole;
 }
 
 // ── Result ─────────────────────────────────────────────────────────────────

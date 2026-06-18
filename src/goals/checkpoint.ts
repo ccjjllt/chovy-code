@@ -1,34 +1,32 @@
 /**
- * Goal-loop checkpoint trigger (step-23 ↔ step-26 collaboration).
+ * Goal-loop checkpoint trigger (step-23 ↔ step-26 collaboration, finalized).
  *
- * Every `CHECKPOINT_INTERVAL_ROUNDS` (default 5) rounds we:
- *   1. spawn the `checkpoint-writer` built-in role via the live sub-agent
- *      pool (registered by step-19) — it writes a structured snapshot
- *      under `~/.chovy/projects/<id>/checkpoints/` (path enforcement by
- *      step-26 / SCW; for now it's pool-level role-config),
- *   2. emit `CheckpointWritten` (advisory) so user hooks can observe.
+ * The goal loop calls `triggerCheckpoint(goal, ctx)` every
+ * `CHECKPOINT_INTERVAL_ROUNDS` rounds (`shouldCheckpoint`). Step-23 shipped
+ * a placeholder that just `void spawnFn(...)`-detached the writer with a
+ * narrative prompt; step-26 replaces that with a real coordinator delegation:
  *
- * step-26 is partially implemented (the role definition exists at
- * `src/agent/builtin/checkpointWriterAgent.ts`); step-26 finalizes the
- * exact prompt + path sandbox. Until then we still gain the periodic
- * snapshot benefit because the role's allowed-tools (`file_read` /
- * `file_write`) are real.
+ *   - The CheckpointCoordinator (`src/memory/checkpointWriter.ts`) owns
+ *     the snapshot prompt, archive rotation, validation, and fallback.
+ *   - The trigger is fire-and-forget from the goal loop's perspective:
+ *     `void getCheckpointCoordinator().maybeCheckpoint(...)` so the loop
+ *     never blocks on the writer.
+ *   - Failures inside the coordinator are swallowed + logged; an
+ *     occasional missing checkpoint just means the next session start
+ *     rebuilds context from the goal file alone (per spec §性能).
  *
- * Per `docs/step-23 §单轮迭代`:
- *   - the checkpoint writer is fire-and-forget (does NOT block the goal
- *     loop). The goal-loop awaits the checkpoint trigger but bounded by
- *     a small timeout; longer-running checkpoint runs are detached.
- *   - failures are non-fatal: a missing checkpoint just means the next
- *     /goal resume rebuilds context from the goal file alone.
+ * Cancellation: the coordinator wraps `parentSignal` in a *local* AC, so
+ * the spawned writer cancels alongside the goal but neither shares the
+ * caller's signal nor leaks across runs (AGENTS.md §9).
  *
- * Cancellation: the spawn uses the goal's signal so cancelling the goal
- * cancels the in-flight checkpoint write. Per AGENTS.md §9 the spawned
- * agent gets its OWN AbortController inside the pool — we just observe.
+ * Backward compat: the public surface (`shouldCheckpoint` / `triggerCheckpoint`)
+ * is unchanged so step-23 callers keep working without code edits.
  */
 
 import { logger } from "../logger/index.js";
 import { CHECKPOINT_INTERVAL_ROUNDS } from "./goalState.js";
-import type { GoalState, SpawnFn, ToolContext } from "../types/index.js";
+import { getCheckpointCoordinator } from "../memory/index.js";
+import type { GoalState, ProviderId, SpawnFn, ToolContext } from "../types/index.js";
 
 /** True when the current round is a multiple of `CHECKPOINT_INTERVAL_ROUNDS`. */
 export function shouldCheckpoint(goal: GoalState): boolean {
@@ -36,70 +34,68 @@ export function shouldCheckpoint(goal: GoalState): boolean {
 }
 
 /**
- * Spawn a checkpoint-writer sub-agent if we have a `spawnFn` available.
- * Detached: we don't await the result — the goal loop continues immediately.
- * Errors are swallowed + logged.
+ * Trigger a checkpoint via the coordinator. The legacy `spawnFn` arg is
+ * accepted for backward-compat with step-23 callers but ignored — the
+ * coordinator pulls the live `SubAgentPool` itself, so callers no longer
+ * need to plumb a SpawnFn through `RunGoalOptions`. The `cwd` / `provider`
+ * / `model` / `parentSignal` / `hooks` fields are forwarded to the
+ * coordinator when present.
  */
 export async function triggerCheckpoint(
   goal: GoalState,
-  ctx: { spawnFn?: SpawnFn; hooks?: ToolContext["hooks"] },
+  ctx: {
+    cwd?: string;
+    provider?: ProviderId;
+    model?: string;
+    parentSignal?: AbortSignal;
+    hooks?: ToolContext["hooks"];
+    /** @deprecated step-23 kept this for back-compat; coordinator owns spawn now. */
+    spawnFn?: SpawnFn;
+  },
 ): Promise<void> {
-  if (!ctx.spawnFn) {
-    logger.debug("checkpoint: no spawnFn (sub-agent runtime not wired)", {
+  // Provider is required by the coordinator (it constructs `parentCtx` for
+  // the spawn). When the goal loop doesn't have a provider snapshot in the
+  // ctx (e.g. headless tests), we can't run a writer — log & skip.
+  if (!ctx.provider) {
+    logger.debug("checkpoint: no provider on ctx (skipping trigger)", {
       goalId: goal.id,
       round: goal.rounds,
     });
     return;
   }
 
-  const prompt = [
-    `Write a checkpoint for /goal "${goal.objective}".`,
-    `Round ${goal.rounds}/${goal.maxRounds}; cost $${goal.totalCostUSD.toFixed(4)}.`,
-    `Status: ${goal.status}.`,
-    `History (last 5):`,
-    ...goal.history.slice(-5).map(
-      (h) =>
-        `  - round ${h.round}: ${h.summary.slice(0, 100)}${h.converged ? " ✓" : ""}`,
-    ),
-    "",
-    "Save a structured summary to ~/.chovy/projects/<hash>/checkpoints/.",
-  ].join("\n");
+  const coordinator = getCheckpointCoordinator(
+    ctx.hooks ? { hooks: ctx.hooks } : undefined,
+  );
 
-  try {
-    // Detach intentionally: the spawn returns a handle synchronously; the
-    // pool's `runChild` does the real work in the background. We don't
-    // await the handle's result — checkpoint writing must NEVER block the
-    // goal loop. Failures are visible via the swarm panel + telemetry.
-    void ctx.spawnFn({
-      role: "checkpoint-writer",
-      prompt,
-      background: true,
-      // step-19 role default: allowedTools = ['file_read','file_write'];
-      // step-26 will narrow file_write paths via the permission/sandbox
-      // layer. We pass nothing here (caller intersection only collapses).
-    });
-    logger.info("checkpoint: spawned checkpoint-writer (detached)", {
-      goalId: goal.id,
-      round: goal.rounds,
+  // Fire-and-forget: the goal loop must not block on the writer (per
+  // step-23 §单轮迭代 + step-26 §性能). Errors are surfaced via telemetry +
+  // the coordinator's own logger.warn — we still attach a `.catch` so
+  // unhandled rejections don't pollute the runtime.
+  void coordinator
+    .maybeCheckpoint("goal-round", {
+      cwd: ctx.cwd ?? process.cwd(),
+      objective: goal.objective,
+      historyTail: goal.history.slice(-5),
+      // Goal loop does not retain the rolling message tail — the coordinator
+      // builds the snapshot from objective + history only when no messages
+      // are passed. Future SCW (step-27/28) hooks can pass the live tail.
+      recentMessages: [],
+      provider: ctx.provider,
+      model: ctx.model,
+      parentSignal: ctx.parentSignal,
+      threadId: goal.threadId,
+    })
+    .catch((err) => {
+      logger.warn("checkpoint: coordinator threw", {
+        goalId: goal.id,
+        round: goal.rounds,
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
 
-    // Best-effort CheckpointWritten emit (advisory). Real path/bytes are
-    // unknown until the writer finishes; downstream hooks will pick up
-    // the actual artifact on the next session start.
-    if (ctx.hooks?.emit) {
-      try {
-        await ctx.hooks.emit("CheckpointWritten", {
-          extra: { goalId: goal.id, round: goal.rounds, mode: "spawned" },
-        });
-      } catch {
-        /* advisory — never fatal */
-      }
-    }
-  } catch (err) {
-    logger.warn("checkpoint: spawn failed", {
-      goalId: goal.id,
-      round: goal.rounds,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+  logger.debug("checkpoint: delegated to coordinator", {
+    goalId: goal.id,
+    round: goal.rounds,
+  });
 }

@@ -283,7 +283,18 @@ export async function runGoal(
 
       // ── 8. periodic checkpoint ───────────────────────────────────────
       if (shouldCheckpoint(goal)) {
-        await triggerCheckpoint(goal, { spawnFn: opts.spawnFn });
+        // step-26: forward provider/model/cwd/parentSignal so the
+        // CheckpointCoordinator can spawn the writer with a well-formed
+        // parent context. The legacy `spawnFn` is still accepted by
+        // `triggerCheckpoint` but ignored — the coordinator pulls the
+        // live `SubAgentPool` itself.
+        await triggerCheckpoint(goal, {
+          cwd: opts.cwd,
+          provider: opts.provider,
+          model: opts.model,
+          parentSignal: ac.signal,
+          spawnFn: opts.spawnFn,
+        });
       }
 
       await persistGoal(opts.cwd, goal);
