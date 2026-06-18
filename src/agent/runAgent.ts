@@ -1,0 +1,158 @@
+/**
+ * Generic agent runner — thin lifecycle wrapper over `QueryEngine` (step-16).
+ *
+ * The engine is the dumb worker; `runAgent` adds the *agent* shape:
+ *   - one prompt → one final answer (back-compat with the legacy
+ *     `runAgent(prompt, opts)` signature in `agent.ts`),
+ *   - friendly callbacks (`onToken` / `onToolCall`) that map onto the
+ *     engine's richer `onToken` / `onToolStart` / `onToolEnd`,
+ *   - per-run AbortController (sub-agents will wrap this with their own),
+ *   - default model resolution via the provider registry.
+ *
+ * Sub-agents (step-18 / step-19) layer on top of this by injecting
+ * `agentRole`, `parentId`, `tools[Allowlist|Denylist]`, and an isolated
+ * AbortController.
+ *
+ * The legacy `agent.ts` re-exports this entry point so existing CLI /
+ * REPL imports keep working unchanged.
+ */
+
+import { QueryEngine, type QueryEngineDeps, type QueryRunOptions, type QueryRunResult } from "../engine/index.js";
+import { getProvider } from "../providers/index.js";
+import { logger } from "../logger/index.js";
+import type { AgentRole, ChatMessage, ProviderId, ToolContext, ToolResult } from "../types/index.js";
+
+export interface AgentOptions {
+  provider: ProviderId;
+  model?: string;
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  /** Cap on tool-call rounds per `run()` to avoid runaway loops. */
+  maxRounds?: number;
+  /** Hard cap on USD spend; default Infinity. */
+  budgetUSD?: number;
+  /** Called for every assistant token (streaming UI). */
+  onToken?: (delta: string) => void;
+  /** Called whenever the agent executes a tool. */
+  onToolCall?: (name: string, args: unknown) => void;
+  /**
+   * External abort signal. Sub-agents MUST construct their own (AGENTS.md §9);
+   * the engine internally wraps whatever we pass in a fresh AbortController.
+   */
+  abortSignal?: AbortSignal;
+  /** Optional `ask_user_question` callback supplied by the UI (step-22). */
+  askUser?: ToolContext["askUser"];
+  /** Honors `process.stdin.isTTY` by default; UI may override. */
+  isInteractive?: ToolContext["isInteractive"];
+  /** Permission mode for this run (step-12). Defaults to `config.permissionMode`. */
+  permissionMode?: string;
+  /** Settings paths for the hook engine (step-13). */
+  hooksSettingsPaths?: string[];
+  /** Surface hook stderr / block reasons in the UI. */
+  onHookMessage?: (message: string) => void;
+  /** Sub-agent / swarm bookkeeping. */
+  agentRole?: AgentRole;
+  agentId?: string;
+  parentId?: string;
+  /** Override the default tool pool (sub-agents pass their whitelist here). */
+  toolAllowlist?: string[];
+  toolDenylist?: string[];
+  /** Token budget for ATP allocator. */
+  toolBudgetTokens?: number;
+}
+
+/**
+ * One-shot entry: feeds `prompt` as the first user message, runs the
+ * engine until either a final answer or `maxRounds` lands, and returns
+ * the assistant text. Matches the legacy `runAgent` signature so existing
+ * CLI / REPL code continues to work without changes.
+ *
+ * For multi-turn / advanced uses (sub-agents, goal loop), construct a
+ * `QueryEngine` directly and call `engine.run(opts)`.
+ */
+export async function runAgent(
+  prompt: string,
+  opts: AgentOptions,
+): Promise<string> {
+  const provider = getProvider(opts.provider);
+  provider.assertReady();
+
+  const messages: ChatMessage[] = [
+    { role: "user", content: prompt, ts: Date.now() },
+  ];
+
+  const engine = new QueryEngine();
+  const result = await engine.run(buildRunOptions(messages, opts));
+
+  if (result.stopReason === "cancelled") {
+    logger.debug("runAgent: cancelled", { rounds: result.rounds });
+    return result.finalContent || "(cancelled)";
+  }
+  if (result.stopReason === "budgetExceeded") {
+    logger.warn("runAgent: budget exceeded", {
+      usd: result.costUSD,
+    });
+  }
+  return result.finalContent;
+}
+
+/**
+ * Multi-turn entry: lets callers seed an existing message list and
+ * receive the full result (rounds / cost / messages / shapes) instead of
+ * just the final content. Used by sub-agents / swarm / goal.
+ */
+export async function runQuery(
+  messages: ChatMessage[],
+  opts: AgentOptions,
+  deps?: QueryEngineDeps,
+): Promise<QueryRunResult> {
+  const provider = getProvider(opts.provider);
+  provider.assertReady();
+  const engine = new QueryEngine(deps);
+  return engine.run(buildRunOptions(messages, opts));
+}
+
+function buildRunOptions(
+  messages: ChatMessage[],
+  opts: AgentOptions,
+): QueryRunOptions {
+  const out: QueryRunOptions = {
+    messages,
+    provider: opts.provider,
+    model: opts.model,
+    temperature: opts.temperature,
+    maxTokens: opts.maxTokens,
+    permissionMode: opts.permissionMode,
+    hooksSettingsPaths: opts.hooksSettingsPaths,
+    abortSignal: opts.abortSignal,
+    agentRole: opts.agentRole,
+    agentId: opts.agentId,
+    parentId: opts.parentId,
+    askUser: opts.askUser,
+    isInteractive: opts.isInteractive,
+    toolAllowlist: opts.toolAllowlist,
+    toolDenylist: opts.toolDenylist,
+    toolBudgetTokens: opts.toolBudgetTokens,
+    maxRounds: opts.maxRounds,
+    budgetUSD: opts.budgetUSD,
+    onHookMessage: opts.onHookMessage,
+    onToken: opts.onToken,
+    onToolStart: opts.onToolCall
+      ? (name: string, args: unknown) => opts.onToolCall!(name, args)
+      : undefined,
+    onToolEnd: opts.onToolCall
+      ? (_name: string, _result: ToolResult) => {
+          /* legacy callback only fires on start; end is observed via final result */
+        }
+      : undefined,
+  };
+
+  // Layer 3 of the system prompt: user-supplied custom prompt (the legacy
+  // `systemPrompt` option). Kept additive — it stacks above the chovy
+  // default per `docs/step-15-system-prompt.md §5 层优先级`.
+  if (opts.systemPrompt) {
+    out.systemPromptOpts = { custom: opts.systemPrompt };
+  }
+  return out;
+}

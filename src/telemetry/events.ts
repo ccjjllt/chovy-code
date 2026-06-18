@@ -1,28 +1,27 @@
 /**
  * Telemetry event types.
  *
- * Step-03 freezes the event union shape. Later steps will fill in the
- * placeholder cross-module types (PromptShape) once their owning steps land.
+ * Step-03 freezes the event union shape. Later steps fill in the placeholder
+ * cross-module types once their owning steps land.
  *
- * `AgentRole` is re-exported from `src/types/agent.ts` so we keep one source
- * of truth. step-03 originally inlined a parallel literal union but the
- * names diverged (`explore` vs `explorer`) — Phase B verification (2026-06-18)
- * unified them on `types/agent.ts` to avoid silent role-string mismatches
- * between telemetry and the relevance scorer / sub-agent runtime.
+ * Single-source rule (AGENTS.md §16): cross-module union types live in their
+ * owning module and are re-exported here:
+ *   - `AgentRole`   → `src/types/agent.ts`
+ *   - `PromptShape` → `src/prompts/fingerprint.ts` (step-15)
+ *
+ * `AgentRole` was originally inlined as a parallel literal union but the names
+ * diverged (`explore` vs `explorer`) — Phase B verification (2026-06-18)
+ * unified them on `types/agent.ts`. Step-15 applies the same rule to
+ * `PromptShape`: the placeholder shape (`hash` / `layers` / `tokens`) is gone;
+ * consumers MUST import the real shape from `prompts/fingerprint.ts` (or via
+ * the `prompts` barrel). Only one telemetry event references it today
+ * (`prompt.shape`) and step-16's QueryEngine is the first emitter.
  */
 
 export type { AgentRole } from "../types/agent.js";
+export type { PromptShape } from "../prompts/fingerprint.js";
 import type { AgentRole } from "../types/agent.js";
-
-// TODO step-15: replace with PromptShape exported from src/prompts/fingerprint.ts.
-export interface PromptShape {
-  /** Stable hash over the assembled system prompt layers. */
-  hash: string;
-  /** Number of layers participating in the build. */
-  layers: number;
-  /** Total tokens (estimated) of the final prompt. */
-  tokens: number;
-}
+import type { PromptShape } from "../prompts/fingerprint.js";
 
 export type TelemetryEvent =
   | { type: "agent.start"; agentId: string; role: AgentRole; ts: number }
@@ -64,6 +63,26 @@ export type TelemetryEvent =
       hookName: string;
       outcome: "ok" | "blocked" | "bypassed" | "error" | "timeout";
       durMs: number;
+      ts: number;
+    }
+  | {
+      /**
+       * step-16: emitted once per provider round when usage is reported.
+       * Single source is `engine/costTracker.ts` — `QueryEngine` MUST NOT
+       * emit it directly. Lets `chovy log tail` audit spend without a
+       * dedicated CLI subcommand. `cacheRead` / `cacheWrite` are the
+       * prompt-cache aware splits (Anthropic etc.); other providers
+       * report them as 0.
+       */
+      type: "agent.cost";
+      agentId: string;
+      provider: string;
+      model: string;
+      usd: number;
+      tokensIn: number;
+      tokensOut: number;
+      cacheRead: number;
+      cacheWrite: number;
       ts: number;
     };
 
