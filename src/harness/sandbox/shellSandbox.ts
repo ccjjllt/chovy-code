@@ -108,6 +108,15 @@ export const ENV_WHITELIST: readonly string[] = [
   "TMP",
 ];
 
+const CANONICAL_ENV_WHITELIST = new Map(
+  ENV_WHITELIST.map((key) => [key.toUpperCase(), key] as const),
+);
+
+function canonicalEnvKey(key: string): string | undefined {
+  if (ENV_WHITELIST.includes(key)) return key;
+  return IS_WIN ? CANONICAL_ENV_WHITELIST.get(key.toUpperCase()) : undefined;
+}
+
 /**
  * Filter an environment down to the whitelist + any `CHOVY_`-prefixed
  * vars (so future feature flags propagate without touching this list).
@@ -117,8 +126,14 @@ export function filterEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined) continue;
-    if (ENV_WHITELIST.includes(k) || k.startsWith("CHOVY_")) {
-      out[k] = v;
+    const canonical = canonicalEnvKey(k);
+    if (canonical) {
+      out[canonical] = v;
+    } else if (
+      k.startsWith("CHOVY_") ||
+      (IS_WIN && k.toUpperCase().startsWith("CHOVY_"))
+    ) {
+      out[k.toUpperCase()] = v;
     }
   }
   return out;

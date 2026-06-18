@@ -214,7 +214,24 @@ $ bun run scripts/smoke-fs-tools.ts            All smoke checks passed
 
 ---
 
-## 10. 文件清单（新增 / 修改）
+## 10. 验收追补（2026-06-18）
+
+Phase A-C 复验时发现 `scripts/smoke-step14.ts` 在 Windows 下失败 1 项：`buildSandboxSpawnArgs()` 通过 `filterEnv(process.env)` 生成降级沙箱环境时，Windows 常见的环境键名是 `Path` 而不是 `PATH`，原实现只精确保留 `PATH`，导致子进程环境丢失可执行文件搜索路径。
+
+修复：
+- `src/harness/sandbox/shellSandbox.ts` 新增 Windows 环境变量大小写归一；
+- 白名单变量在 Windows 下按大小写无关匹配，并输出规范键名（例如 `Path` → `PATH`）；
+- `CHOVY_*` 变量在 Windows 下同样大小写无关保留。
+
+复验：
+- `bun run typecheck`：PASS；
+- `bun run scripts/smoke-step14.ts`：46/46 PASS。
+
+新增不变量已同步到 `AGENTS.md §16`：沙箱环境过滤必须兼容 Windows `Path` / `PATH` 差异。
+
+---
+
+## 11. 文件清单（新增 / 修改）
 
 新增：
 - `src/harness/sandbox/allowlist.ts`（159 行）

@@ -5,17 +5,18 @@
 > 子智能体 Swarm Router、跨会话持久化记忆 + 全文索引、智能上下文预算注入、长程 `/goal` 任务循环、
 > 工具调用的"自适应胖瘦"协议（ATP）。
 >
-> **范围**：本次仅产出 **计划文档**，不做任何编码。
+> **范围**：本文是路线图与状态导航；具体实现、验收与追补记录以各 step 文档和 `docs/complete/` 为准。
 
 ---
 
-## 0. 项目当前状态（Phase A + B1 已验收）
+## 0. 项目当前状态（Phase A-C 已完成并复验）
 
 ```
 chovy-code/
-├── bin/chovy.js               # 已构建的 CLI 入口
+├── bin/chovy.js               # 已构建的 CLI 入口（自动产物）
+├── docs/complete/             # 各 step / phase 验收报告
 ├── package.json               # Bun + React 18 + Ink 5 + Zod 3 + Commander 12
-├── scripts/build.ts           # bun.build 打包脚本
+├── scripts/build.ts           # bun.build 打包脚本 + smoke 脚本
 └── src/
     ├── index.ts               # public barrel
     ├── version.ts
@@ -28,18 +29,21 @@ chovy-code/
     ├── config/                # zod 校验的 env 配置
     ├── logger/                # leveled logger
     ├── providers/             # registry + openai 参考实现 + 6 个 scaffold
-    ├── tools/                 # Tool v2 registry + ATP allocator + echo + fs tools
+    ├── tools/                 # Tool v2 registry + ATP allocator + fs / exec / web / meta tools
+    ├── harness/               # permissions / hooks / sandbox
     └── types/                 # ChatMessage / Tool / Provider 等契约
 ```
 
-**已完成**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop 与流式 UI；
-Phase A（step-01–05）验收追补；B1（step-06 Tool Protocol v2 + step-07 ATP allocator）验收追补。
-仓库中已有 step-08 fs tools 产物与完成报告，继续依赖前应按 step-08 文档单独验收。
-**未实现**：exec/web/meta 真实工具、权限/沙箱、子智能体、记忆、目标循环、上下文管理、技能、所有非 OpenAI provider 的真实接线。
+**已完成并复验**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop 与流式 UI；
+Phase A（step-01–05）Foundation、Phase B（step-06–11）Tool System v2、Phase C（step-12–14）Harness。
+已具备 Tool Protocol v2、ATP 分配器、fs/exec/web/meta 9 个核心工具、权限引擎、Hook 引擎、文件系统/命令沙箱。
+**未实现**：system prompt 分层、QueryEngine、真实多 provider 网络接线、子智能体运行时、记忆/checkpoint、目标循环、上下文管理、技能图（对应 Phase D–I）。
+
+最新 A-C 复验报告见 [`complete/phase-a-c-acceptance.md`](./complete/phase-a-c-acceptance.md)。
 
 ---
 
-## 1. 总体路线图（10 阶段 / 30 步）
+## 1. 总体路线图（9 阶段 / 30 步）
 
 > 30 步按 **9 个阶段（Phase A–I）** 组织。每个阶段内部独立、可被多人 / 多 agent **并行** 推进；阶段之间存在显式依赖。
 > 每一步都附 `step-XX-<slug>.md`，文件中包含目标、产物、详细实现要点、验收标准、参考 cc-haha 文件。

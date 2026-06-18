@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）与 Phase B（Tool System v2）已完成构建并验收；Phase C（Harness）进行中**。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）已完成构建并通过复验；下一步进入 Phase D（Agent Core）**。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -54,14 +54,14 @@ chovy-code/
     ├── telemetry/            # 本地 JSONL telemetry sink
     ├── providers/            # registry + openai 参考实现 + 6 个 scaffold
     ├── tools/                # Tool v2 registry + ATP allocator + echo + fs / exec / web / meta 工具
-    ├── harness/              # 缰绳层：permissions（6 层引擎 + 5 模式 + 熔断器）
+    ├── harness/              # 缰绳层：permissions / hooks / sandbox
     └── types/                # provider / messages / tool 契约
 ```
 
 **已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop（构造 `ToolContext` 并下发到 `tool.run`）与流式 UI 渲染；
-Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、9 个核心工具（fs / exec / web / meta）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件）。
+Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、9 个核心工具（fs / exec / web / meta）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）。
 各 Phase 的详细产物与验收结论见 `docs/complete/` 下对应报告；本文不逐步罗列。
-**未实现**：沙箱、QueryEngine、子智能体真实运行、记忆/checkpoint、目标循环、技能图、非 openai provider 的真实网络接线（对应 Phase C 余量 + D–I）。
+**未实现**：QueryEngine、system prompt 分层、子智能体真实运行、记忆/checkpoint、目标循环、技能图、非 openai provider 的真实网络接线（对应 Phase D–I）。
 
 ---
 
@@ -337,6 +337,7 @@ chovy log tail                   # 看 telemetry
 
 **bash / ctx 不变量**：
 - bash 必须接 `ctx?.abortSignal`；新工具做长任务**必须**透传 `ctx?.abortSignal` 到内部 fetch / spawn / setTimeout。
+- 沙箱环境过滤必须在 Windows 下兼容 `Path` / `PATH` 大小写差异，并向子进程输出规范 `PATH`，否则降级沙箱会丢失可执行文件搜索路径。
 - 子 agent **必须**为 `ctx.abortSignal` 创建独立 `AbortController`，不能共用父 agent 的 signal（§9 既有红线）。
 - `ask_user_question` 在 `ctx.askUser` 缺席时返回 `INTERNAL`，非 TTY 返回 `TOOL_DENIED`，**绝不**阻塞 stdin。
 - `todo_write` 的会话 todo 通过 `ctx.session.todoList` 存活（agent loop 注入空数组），module-level fallback 仅裸调时启用。
@@ -344,4 +345,3 @@ chovy log tail                   # 看 telemetry
 **harness→tools 边**：harness 模块是叶子，只 reach `tools/exec/ast.js` + `tools/exec/classification.js` 等零外部依赖纯函数叶子，不引入 tool registry，无循环。后续 harness 模块复用 tools 纯函数时照此例 reach 叶子而非 barrel。hook 层 shell 选择 + killTree 独立实现，不 reach `tools/exec/bash.ts`；matcher 通配语法是 `rules.ts` 的精简端口（不 import）。
 
 **rules.json / settings.json 缺失静默**：ENOENT 静默跳过（errno 从 `ChovyError.meta.errno` 提取，因 safeFs 把 node errno 包进 `MEMORY_IO`）；坏 JSON/坏行 warn + 跳过，不抛。
-
