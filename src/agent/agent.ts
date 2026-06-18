@@ -122,7 +122,18 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
         let ok = true;
         let output: string;
         try {
-          output = await tool.run(parsed.data);
+          // step-06 back-compat: tool.run may return either a legacy string
+          // or a v2 ToolResult; we wrap strings and read `.content` from
+          // structured results. The full ToolContext lands when step-12/13
+          // wire the permission and hook engines — until then we pass `args`
+          // only (the v2 `ctx` parameter is optional).
+          const raw = await tool.run(parsed.data);
+          if (typeof raw === "string") {
+            output = raw;
+          } else {
+            ok = raw.ok;
+            output = raw.content;
+          }
         } catch (err) {
           ok = false;
           output = `Error: ${err instanceof Error ? err.message : String(err)}`;

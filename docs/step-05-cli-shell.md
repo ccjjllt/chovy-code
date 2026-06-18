@@ -111,3 +111,8 @@ const slashes: Record<string, { handler: SlashHandler; help: string }> = {
 ## 风险
 
 - Ink 5 的 stdin raw mode 在 Windows ConHost 不稳定 → 推荐 Windows Terminal；提供 `CHOVY_DISABLE_RAW=1` 降级。
+
+## 验收追补（2026-06-18）
+
+- 所有子命令 action 都必须走统一 `resolveCtx()` 启动管线，确保 feature flag、permission mode、`CHOVY_HOME` 与 config 校验行为一致。
+- 非 TTY 下无参 `chovy` 必须拒绝进入 REPL 并输出明确 `CONFIG_INVALID`，避免 Ink raw-mode stack 泄露到用户界面；非交互场景使用 `chovy chat "..."`。

@@ -14,6 +14,7 @@ import { logger } from "../logger/index.js";
 import { ensureHomeDirs, ensureProjectDirs } from "../fs/index.js";
 import { listProviders, getProvider } from "../providers/index.js"; // side-effect: registers providers
 import { listTools } from "../tools/index.js"; // side-effect: registers tools
+import { ChovyError } from "../types/errors.js";
 import { AgentRepl } from "./components/AgentRepl.js";
 import { ChovyRepl } from "./repl.js";
 import type { ProviderId } from "../types/index.js";
@@ -75,10 +76,12 @@ function resolveCtx(opts: CommonFlags): ResolvedCtx {
   if (opts.verbose) args.verbose = true;
   if (opts.permissionMode) {
     if (!PERMISSION_MODES.includes(opts.permissionMode as PermissionMode)) {
-      logger.error(
-        `CONFIG_INVALID: unknown --permission-mode "${opts.permissionMode}". ` +
-          `Expected one of: ${PERMISSION_MODES.join(", ")}`,
-      );
+      logger.error(new ChovyError(
+        "CONFIG_INVALID",
+        `unknown --permission-mode "${opts.permissionMode}". Expected one of: ${PERMISSION_MODES.join(", ")}`,
+        undefined,
+        { permissionMode: opts.permissionMode },
+      ));
       process.exit(2);
     }
     args.permissionMode = opts.permissionMode as PermissionMode;
@@ -102,15 +105,24 @@ function resolveCtx(opts: CommonFlags): ResolvedCtx {
 function assertProviderReady(provider: ProviderId): void {
   if (hasSecret(provider)) return;
   const label = safeProviderLabel(provider);
-  logger.error(
-    `PROVIDER_NOT_READY: ${label} API key missing. ` +
-      `Set ${envKeyFor(provider)} in your environment, ` +
-      `or write the key to ~/.chovy/secrets/${provider}.`,
-  );
+  logger.error(new ChovyError(
+    "PROVIDER_NOT_READY",
+    `${label} API key missing. Set ${envKeyFor(provider)} in your environment, or write the key to ~/.chovy/secrets/${provider}.`,
+    undefined,
+    { provider, envKey: envKeyFor(provider) },
+  ));
   process.exit(2);
 }
 
 function startRepl(ctx: ResolvedCtx): void {
+  if (!process.stdin.isTTY) {
+    logger.error(new ChovyError(
+      "CONFIG_INVALID",
+      'interactive REPL requires a TTY; run `chovy chat "..."` for non-interactive use.',
+    ));
+    process.exit(2);
+  }
+
   // Do not gate REPL boot on PROVIDER_NOT_READY — the user may want to use
   // /provider, /mode, /help, etc. without keys; the first real prompt will
   // surface the missing-key error from the agent loop.
@@ -135,6 +147,16 @@ function startOneShot(prompt: string, ctx: ResolvedCtx): void {
     <AgentRepl prompt={prompt} provider={ctx.provider} model={ctx.model} />,
     { exitOnCtrlC: true },
   );
+}
+
+function commandFromActionArgs(args: readonly unknown[]): Command {
+  const last = args[args.length - 1];
+  if (last instanceof Command) return last;
+  throw new ChovyError("INTERNAL", "Commander action did not provide command context.");
+}
+
+function resolveCtxFromActionArgs(args: readonly unknown[]): ResolvedCtx {
+  return resolveCtx(commandFromActionArgs(args).optsWithGlobals() as CommonFlags);
 }
 
 const program = new Command();
@@ -171,9 +193,8 @@ program
 program
   .command("chat [prompt]")
   .description("一次性对话；省略 prompt 进入交互式 REPL")
-  .action((prompt: string | undefined, _local: unknown, cmd: Command) => {
-    const opts = cmd.optsWithGlobals() as CommonFlags;
-    const ctx = resolveCtx(opts);
+  .action((prompt: string | undefined, ...args: unknown[]) => {
+    const ctx = resolveCtxFromActionArgs(args);
     if (!prompt) { startRepl(ctx); return; }
     startOneShot(prompt, ctx);
   });
@@ -182,9 +203,8 @@ program
 program
   .command("goal <objective>")
   .description("启动 /goal 长程任务（占位，TODO step-23）")
-  .action((objective: string, _local: unknown, cmd: Command) => {
-    const opts = cmd.optsWithGlobals() as CommonFlags;
-    resolveCtx(opts);
+  .action((objective: string, ...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
     logger.info(`/goal: ${objective}`);
     logger.info("（goal 循环将于 step-23 接入；当前仅记录目标。）");
   });
@@ -192,31 +212,50 @@ program
 // `chovy mem ...` — TODO step-25.
 const mem = program.command("mem").description("记忆操作（TODO step-24/25）");
 mem.command("list").description("列出记忆条目")
-  .action(() => logger.info("memory list — TODO step-25"));
+  .action((...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
+    logger.info("memory list — TODO step-25");
+  });
 mem.command("show <key>").description("展示某个记忆条目")
-  .action((key: string) => logger.info(`memory show ${key} — TODO step-25`));
+  .action((key: string, ...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
+    logger.info(`memory show ${key} — TODO step-25`);
+  });
 mem.command("search <query>").description("全文搜索记忆")
-  .action((query: string) => logger.info(`memory search "${query}" — TODO step-25`));
+  .action((query: string, ...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
+    logger.info(`memory search "${query}" — TODO step-25`);
+  });
 
 // `chovy agent ...` — TODO step-22.
 const agent = program.command("agent").description("子 agent 操作（TODO step-22）");
 agent.command("list").description("列出活跃子 agent")
-  .action(() => logger.info("agent list — TODO step-22"));
+  .action((...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
+    logger.info("agent list — TODO step-22");
+  });
 
 // `chovy skill ...` — TODO step-29.
 const skill = program.command("skill").description("技能操作（TODO step-29）");
 skill.command("list").description("列出已加载技能")
-  .action(() => logger.info("skill list — TODO step-29"));
+  .action((...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
+    logger.info("skill list — TODO step-29");
+  });
 
 // `chovy log tail` — point at the local telemetry sink (step-03).
 const log = program.command("log").description("本地 telemetry 操作");
 log.command("tail").description("提示 telemetry 文件位置")
-  .action(() => logger.info("log tail — 见 ~/.chovy/telemetry/<date>.jsonl"));
+  .action((...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
+    logger.info("log tail — 见 ~/.chovy/telemetry/<date>.jsonl");
+  });
 
 // `chovy provider list` — discoverability.
 const providerCmd = program.command("provider").description("provider 列表");
 providerCmd.command("list").description("列出已注册 provider")
-  .action(() => {
+  .action((...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
     for (const p of listProviders()) {
       logger.info(`${p.info.id}\t${p.info.label}\tdefault=${p.info.defaultModel}`);
     }

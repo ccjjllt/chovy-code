@@ -73,3 +73,8 @@ export type TelemetryEvent =
 ## 风险
 
 - 高频写入磁盘性能 → buffered append（每 100ms flush）。
+
+## 验收追补（2026-06-18）
+
+- Logger 必须识别 `ChovyError` 并输出规范形态：`chovy.error: <CODE> <message>`。
+- `ChovyError` 属于业务错误，CLI/NDJSON 输出不应附带 stack；普通内部异常仍可附带 stack 便于调试。

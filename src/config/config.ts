@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { safeFsSync } from "../fs/index.js";
+import { ChovyError } from "../types/errors.js";
 import { chovyConfigPath } from "./home.js";
 
 /**
@@ -87,27 +88,38 @@ export type PartialConfig = {
 function readFileLayer(path = chovyConfigPath()): PartialConfig {
   let raw: string;
   try {
-    raw = readFileSync(path, "utf8");
+    raw = safeFsSync.read(path);
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errnoOf(err);
     // Missing config file is the common case — silently fall back to defaults.
     if (code === "ENOENT" || code === "ENOTDIR") return {};
-    throw new Error(
-      `CONFIG_INVALID: failed to read ${path}: ${(err as Error).message}`,
+    throw new ChovyError(
+      "CONFIG_INVALID",
+      `failed to read ${path}: ${(err as Error).message}`,
+      err,
+      { path, ...(code ? { errno: code } : {}) },
     );
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(stripJsonBom(raw));
   } catch (err) {
-    throw new Error(
-      `CONFIG_INVALID: ${path} is not valid JSON — ${(err as Error).message}`,
+    throw new ChovyError(
+      "CONFIG_INVALID",
+      `${path} is not valid JSON — ${(err as Error).message}`,
+      err,
+      { path },
     );
   }
 
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`CONFIG_INVALID: ${path} must contain a JSON object.`);
+    throw new ChovyError(
+      "CONFIG_INVALID",
+      `${path} must contain a JSON object.`,
+      undefined,
+      { path },
+    );
   }
   return parsed as PartialConfig;
 }
@@ -215,8 +227,7 @@ export interface LoadConfigOptions {
 
 /**
  * Read configuration from the four sources and return a frozen, validated
- * object. Throws an Error whose message starts with `CONFIG_INVALID:` on
- * malformed input — step-01 will upgrade these to ChovyError.
+ * object. Throws `ChovyError('CONFIG_INVALID', ...)` on malformed input.
  */
 export function loadConfig(opts: LoadConfigOptions = {}): ChovyConfig {
   const env = opts.env ?? process.env;
@@ -238,8 +249,10 @@ export function loadConfig(opts: LoadConfigOptions = {}): ChovyConfig {
   try {
     parsed = ConfigSchema.parse(merged);
   } catch (err) {
-    throw new Error(
-      `CONFIG_INVALID: ${err instanceof Error ? err.message : String(err)}`,
+    throw new ChovyError(
+      "CONFIG_INVALID",
+      err instanceof Error ? err.message : String(err),
+      err,
     );
   }
 
@@ -270,4 +283,14 @@ function deepFreeze<T>(o: T): T {
     Object.freeze(o);
   }
   return o;
+}
+
+function stripJsonBom(raw: string): string {
+  return raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+}
+
+function errnoOf(err: unknown): string | undefined {
+  const meta = err instanceof ChovyError ? err.meta : undefined;
+  const errno = meta?.["errno"];
+  return typeof errno === "string" ? errno : undefined;
 }

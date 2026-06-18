@@ -1,7 +1,41 @@
 import { registerTool } from "./registry.js";
 import { echoTool } from "./echo.js";
+import {
+  fileReadTool,
+  fileWriteTool,
+  fileEditTool,
+  globTool,
+  grepTool,
+} from "./fs/index.js";
 
-// Register every built-in tool. Add new tools here as you implement them.
-registerTool(echoTool);
+/**
+ * Built-in tool registration (step-06).
+ *
+ * Each built-in tool is registered with its namespace so step-07's ATP
+ * allocator and step-12's permission engine can filter/group them. New
+ * built-ins land in `src/tools/<namespace>/` per `architecture.md §1`.
+ */
+registerTool(echoTool, { namespace: "meta" });
 
-export { getTool, listTools, describeTools } from "./registry.js";
+// step-08: filesystem tools.
+registerTool(fileReadTool, { namespace: "fs" });
+registerTool(fileWriteTool, { namespace: "fs" });
+registerTool(fileEditTool, { namespace: "fs" });
+registerTool(globTool, { namespace: "fs" });
+registerTool(grepTool, { namespace: "fs" });
+
+// ── Public surface ─────────────────────────────────────────────────────────
+
+export {
+  getTool,
+  listTools,
+  registerTool,
+  resetToolRegistry,
+  namespaceOf,
+  describeToolsLegacy,
+} from "./registry.js";
+export type { RegisterOptions, ListFilter } from "./registry.js";
+
+// ATP-aware describer (step-06 freezes the signature; step-07 fills it out).
+export { describeTools } from "./describe.js";
+export type { DescribeOptions, DescribedTool } from "./describe.js";

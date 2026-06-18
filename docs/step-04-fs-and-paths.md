@@ -64,6 +64,10 @@ export const safeFs = {
   stat(p: string): Promise<{ size: number; mtime: number } | null>;
   remove(p: string): Promise<void>;                        // 仅限项目目录内（带断言）
 };
+
+export const safeFsSync = {
+  read(p: string): string;                                  // 启动期 config/features/secrets 专用
+};
 ```
 
 原子写实现：先写 `.tmp` 同目录文件，再 `rename`。
@@ -87,3 +91,8 @@ export const safeFs = {
 
 - Windows 路径大小写 / 反斜杠 → 全部用 `node:path` 的 `posix`/`win32` 精确分支或 `path.join`。
 - 多进程并发写 → 原子 rename 已足够；竞争记录在 telemetry。
+
+## 验收追补（2026-06-18）
+
+- 启动期同步读取统一通过 `safeFsSync.read()` 暴露，供 config/features/secrets 在 Ink 渲染前完成读取；其他应用 I/O 仍优先使用异步 `safeFs`。
+- `src/telemetry/localSink.ts` 的 `beforeExit/exit` 同步 flush 是唯一已知白名单例外，原因是进程退出钩子不能可靠 await async I/O。

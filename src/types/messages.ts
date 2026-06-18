@@ -27,8 +27,17 @@ export interface ToolCall {
   arguments: string;
 }
 
-/** The normalized result of a tool invocation. */
-export interface ToolResult {
+/**
+ * The normalized result of a tool invocation, as it travels back to the
+ * agent loop / provider layer.
+ *
+ * NOTE: Renamed from `ToolResult` in step-06 to disambiguate from the
+ * v2 `ToolResult` in `tool.ts` (which carries `content` / `structuredOutput`
+ * / `meta` / `errorCode`). This wire shape is currently unused — the agent
+ * loop pushes `{ role: 'tool', toolName, content }` directly onto messages
+ * — but it is kept as a public type for future structured tool messaging.
+ */
+export interface ToolCallResult {
   callId: string;
   ok: boolean;
   output: string;

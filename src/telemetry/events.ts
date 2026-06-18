@@ -32,6 +32,22 @@ export type TelemetryEvent =
   | { type: "agent.start"; agentId: string; role: AgentRole; ts: number }
   | { type: "agent.end"; agentId: string; status: string; costUSD: number; ts: number }
   | { type: "tool.call"; tool: string; ok: boolean; durMs: number; ts: number }
+  | {
+      /**
+       * step-07: emitted once per `describeTools()` dispatch so we can audit
+       * lean/full ratios, dropped tools, and remaining headroom on disk.
+       * Privacy-safe — no message content, only counts and the role label.
+       */
+      type: "tools.described";
+      total: number;
+      lean: number;
+      full: number;
+      droppedCount: number;
+      budgetTokens: number;
+      upgradeBudgetRemaining: number;
+      role: AgentRole;
+      ts: number;
+    }
   | { type: "context.threshold"; level: "soft" | "hard"; tokens: number; ts: number }
   | { type: "goal.iteration"; round: number; converged: boolean; ts: number }
   | { type: "memory.injection"; bytes: number; entries: number; ts: number }

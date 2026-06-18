@@ -4,6 +4,8 @@ import type {
   ProviderInfo,
   ProviderRequestOptions,
 } from "../types/index.js";
+import { getSecret } from "../config/secrets.js";
+import { ChovyError } from "../types/errors.js";
 
 /**
  * Factory that produces a *scaffold* provider for the providers whose wire
@@ -39,9 +41,12 @@ export function scaffoldProvider(spec: Spec): Provider {
     info,
 
     assertReady(): void {
-      if (!process.env[info.envKey]) {
-        throw new Error(
-          `${info.label} API key missing. Set ${info.envKey} in your environment (.env).`,
+      if (!getSecret(info.id)) {
+        throw new ChovyError(
+          "PROVIDER_NOT_READY",
+          `${info.label} API key missing. Set ${info.envKey} in your environment or write ~/.chovy/secrets/${info.id}.`,
+          undefined,
+          { provider: info.id, envKey: info.envKey },
         );
       }
     },

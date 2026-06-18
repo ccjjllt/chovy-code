@@ -34,5 +34,5 @@ export {
   _resetProjectEnsureCacheForTesting,
 } from "./paths.js";
 
-export { safeFs, isWithin } from "./safeFs.js";
-export type { SafeFs } from "./safeFs.js";
+export { safeFs, safeFsSync, isWithin } from "./safeFs.js";
+export type { SafeFs, SafeFsSync } from "./safeFs.js";

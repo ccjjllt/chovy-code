@@ -4,6 +4,8 @@ import type {
   ProviderInfo,
   ProviderRequestOptions,
 } from "../types/index.js";
+import { getSecret } from "../config/secrets.js";
+import { ChovyError } from "../types/errors.js";
 
 /**
  * Reference OpenAI adapter. This is a thin scaffold: it wires up the
@@ -24,7 +26,7 @@ const INFO: ProviderInfo = {
 };
 
 function key(): string | undefined {
-  return process.env[INFO.envKey];
+  return getSecret(INFO.id);
 }
 
 export const openaiProvider: Provider = {
@@ -32,8 +34,11 @@ export const openaiProvider: Provider = {
 
   assertReady(): void {
     if (!key()) {
-      throw new Error(
-        `OpenAI API key missing. Set ${INFO.envKey} in your environment (.env).`,
+      throw new ChovyError(
+        "PROVIDER_NOT_READY",
+        `OpenAI API key missing. Set ${INFO.envKey} in your environment or write ~/.chovy/secrets/${INFO.id}.`,
+        undefined,
+        { provider: INFO.id, envKey: INFO.envKey },
       );
     }
   },

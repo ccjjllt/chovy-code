@@ -13,7 +13,8 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**脚手架已完成，30 步开发计划文档已就绪（位于 `docs/`），尚未进入实施阶段**。
+当前阶段：**Phase A（step-01–05）已完成构建并完成验收追补**。下一步主线是
+**step-06 Tool Protocol v2 + ATP**，它是 B1 屏障，后续工具、权限、子 agent 等步骤都会依赖它。
 
 ---
 
@@ -35,7 +36,7 @@
 ```
 chovy-code/
 ├── bin/chovy.js              # 已构建 CLI 入口（自动产物）
-├── docs/                     # 33 份计划文档（README + architecture + innovations + step-01..30）
+├── docs/                     # 计划文档 + complete/ 完成/验收报告
 ├── package.json              # Bun + React 18 + Ink 5 + Zod 3 + Commander 12
 ├── scripts/build.ts          # bun.build 打包脚本
 ├── 源码解析.md                # cc-haha 源码解读（参考资料，非本仓库代码）
@@ -43,17 +44,21 @@ chovy-code/
     ├── index.ts              # public barrel
     ├── version.ts
     ├── agent/agent.ts        # 最小 agent loop（completion → tool → repeat）
-    ├── cli/index.tsx         # commander 入口（一次性 prompt 模式）
-    ├── cli/components/       # AgentRepl + StatusLine
-    ├── config/               # zod env 配置
-    ├── logger/               # leveled logger
+    ├── cli/index.tsx         # commander 入口（subcommands + REPL 路由）
+    ├── cli/repl.tsx          # step-05 交互式 REPL 主屏
+    ├── cli/components/       # AgentRepl / StatusLine / HeaderBar / MessageList
+    ├── config/               # zod 配置合并 + secrets + features
+    ├── fs/                   # chovy home / project paths / safeFs
+    ├── logger/               # 结构化 logger
+    ├── telemetry/            # 本地 JSONL telemetry sink
     ├── providers/            # registry + openai 参考实现 + 6 个 scaffold
     ├── tools/                # registry + echo 参考工具
     └── types/                # provider / messages / tool 契约
 ```
 
-**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop 与流式 UI 渲染。
-**未实现**：真实工具、权限/沙箱、子智能体、记忆、目标循环、上下文管理、技能、所有非 OpenAI provider 的真实接线。
+**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop 与流式 UI 渲染；
+step-01–05 的类型/错误、配置/secrets/features、结构化日志、本地 telemetry、safeFs、CLI 子命令和 REPL 骨架。
+**未实现**：真实工具、权限/沙箱、子智能体、记忆、目标循环、上下文管理、技能、所有 provider 的真实网络接线。
 
 ---
 
@@ -185,7 +190,8 @@ chovy-code/
 - ❌ 把 5 项创新中的某一项静默替换成 cc-haha 的对应实现。
 - ❌ 在工具描述里写超长 prompt（应该按 ATP 协议拆 lean/full）。
 - ❌ 让子 agent 共享父 agent 的 AbortController（每个子 agent 独立信号）。
-- ❌ 直接读 / 写文件不走 `safeFs`（步骤 04 后接入）。
+- ❌ 直接读 / 写应用文件不走 `safeFs` / `safeFsSync`（步骤 04 后接入）。
+  例外：`src/telemetry/localSink.ts` 的 `beforeExit/exit` 同步 flush 可直接使用 sync fs，必须保持本地写入且不得上传。
 - ❌ 在 system prompt 里硬编码 model 或 provider 名（用 capability 矩阵）。
 - ❌ `console.log` 调试信息留在 PR 里。
 - ❌ 修改 `bin/chovy.js` 与 `bin/chovy.js.map`——它们是构建产物，不是源码。
@@ -233,7 +239,8 @@ CLI（按 step-05 完成后）：
 ```bash
 chovy                            # 进入交互式 REPL
 chovy chat "..."                 # 一次性
-chovy /goal "<objective>"        # 长程任务
+chovy goal "<objective>"         # 长程任务入口（step-23 前为占位）
+# REPL 内也可输入 /goal <objective>
 chovy mem list|search|show       # 记忆查询
 chovy agent list                 # 列子 agent
 chovy provider list              # 列 provider
@@ -276,3 +283,12 @@ chovy log tail                   # 看 telemetry
 ---
 
 最后：**先读 docs，再动手；接口冻结后别私改；least privilege 永远赢。**
+
+---
+
+## 15. Phase A 验收追记（2026-06-18）
+
+- step-01–05 已按 `docs/complete/step-01-05-acceptance.md` 完成验收追补。
+- Windows 下 `config.json` / `features.json` 可能带 UTF-8 BOM；配置层必须在解析 JSON 前兼容 BOM。
+- CLI 子命令必须统一走 `resolveCtx()`，确保 `CHOVY_HOME`、feature flag、permission mode、config 校验语义一致。
+- 非 TTY 下无参 `chovy` 不应尝试进入 Ink REPL；应给出明确 `CONFIG_INVALID` 提示，让用户改用 `chovy chat "..."`。

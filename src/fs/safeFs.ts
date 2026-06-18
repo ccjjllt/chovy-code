@@ -27,6 +27,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, join, resolve, sep } from "node:path";
 
@@ -67,6 +68,14 @@ async function read(p: string): Promise<string> {
     return await readFile(p, "utf8");
   } catch (err) {
     return fail("read", p, err);
+  }
+}
+
+function readSync(p: string): string {
+  try {
+    return readFileSync(p, "utf8");
+  } catch (err) {
+    return fail("readSync", p, err);
   }
 }
 
@@ -211,6 +220,14 @@ export interface SafeFs {
   remove(p: string): Promise<void>;
 }
 
+export interface SafeFsSync {
+  /**
+   * Synchronous read for startup paths that must complete before Ink renders
+   * (config, features, secrets). Prefer async `safeFs.read` elsewhere.
+   */
+  read(p: string): string;
+}
+
 export const safeFs: SafeFs = {
   read,
   write,
@@ -220,4 +237,8 @@ export const safeFs: SafeFs = {
   list,
   stat: statOne,
   remove,
+};
+
+export const safeFsSync: SafeFsSync = {
+  read: readSync,
 };

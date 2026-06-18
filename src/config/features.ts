@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { safeFsSync } from "../fs/index.js";
+import { ChovyError } from "../types/errors.js";
 import { chovyFeaturesPath } from "./home.js";
 
 /**
@@ -38,26 +39,39 @@ function loadFileFlags(path = chovyFeaturesPath()): Map<string, boolean> {
 
   let raw: string;
   try {
-    raw = readFileSync(path, "utf8");
+    raw = safeFsSync.read(path);
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errnoOf(err);
     if (code === "ENOENT" || code === "ENOTDIR") {
       fileFlags = out;
       return out;
     }
-    throw err;
+    throw new ChovyError(
+      "CONFIG_INVALID",
+      `failed to read ${path}: ${(err as Error).message}`,
+      err,
+      { path, ...(code ? { errno: code } : {}) },
+    );
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(stripJsonBom(raw));
   } catch (err) {
-    throw new Error(
-      `CONFIG_INVALID: ${path} is not valid JSON — ${(err as Error).message}`,
+    throw new ChovyError(
+      "CONFIG_INVALID",
+      `${path} is not valid JSON — ${(err as Error).message}`,
+      err,
+      { path },
     );
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`CONFIG_INVALID: ${path} must contain a JSON object.`);
+    throw new ChovyError(
+      "CONFIG_INVALID",
+      `${path} must contain a JSON object.`,
+      undefined,
+      { path },
+    );
   }
   for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
     if (typeof v === "boolean") out.set(k, v);
@@ -98,4 +112,14 @@ export function listEnabledFeatures(): string[] {
     enabled.add(k.slice("CHOVY_FEATURE_".length).toLowerCase().replace(/_/g, "."));
   }
   return [...enabled].sort();
+}
+
+function stripJsonBom(raw: string): string {
+  return raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+}
+
+function errnoOf(err: unknown): string | undefined {
+  const meta = err instanceof ChovyError ? err.meta : undefined;
+  const errno = meta?.["errno"];
+  return typeof errno === "string" ? errno : undefined;
 }

@@ -28,6 +28,9 @@ export type ErrorCode =
   | "TOOL_INVALID_ARGS"
   | "TOOL_DENIED"
   | "TOOL_TIMEOUT"
+  // step-07: ATP allocator could not fit even the lean baseline; some tools
+  // were dropped from the descriptor set. Emitted as a *warning*, never thrown.
+  | "TOOL_BUDGET"
   // Permission / hook
   | "PERMISSION_DENIED"
   | "PERMISSION_HOOK_BLOCKED"

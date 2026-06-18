@@ -92,3 +92,9 @@ export function feature(name: string): boolean { ... }
 ## 风险
 
 - 配置文件锁竞争 → 用 `bun write` 原子写。
+
+## 验收追补（2026-06-18）
+
+- `config.json` / `features.json` 解析前必须兼容 UTF-8 BOM，Windows PowerShell `Set-Content -Encoding utf8` 会触发该场景。
+- 配置与 feature 文件错误必须抛 `ChovyError('CONFIG_INVALID', ...)`，不再用普通 `Error('CONFIG_INVALID: ...')` 字符串前缀。
+- Provider readiness 必须通过 `getSecret(provider)`，同时支持 env 与 `~/.chovy/secrets/<provider>` 文件；真实网络接线仍留给 step-17。

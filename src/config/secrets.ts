@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { safeFsSync } from "../fs/index.js";
+import { ChovyError } from "../types/errors.js";
 import type { ProviderId } from "../types/index.js";
 import { chovySecretsDir } from "./home.js";
 
@@ -49,12 +50,17 @@ export function resetSecretsCache(): void {
 function readSecretFromFile(provider: ProviderId): string | undefined {
   const path = join(chovySecretsDir(), provider);
   try {
-    const raw = readFileSync(path, "utf8").trim();
+    const raw = safeFsSync.read(path).trim();
     return raw.length > 0 ? raw : undefined;
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errnoOf(err);
     if (code === "ENOENT" || code === "ENOTDIR") return undefined;
-    throw err;
+    throw new ChovyError(
+      "CONFIG_INVALID",
+      `failed to read secret file for ${provider}: ${(err as Error).message}`,
+      err,
+      { provider, path, ...(code ? { errno: code } : {}) },
+    );
   }
 }
 
@@ -96,4 +102,10 @@ export function getBaseUrl(provider: ProviderId): string | undefined {
 /** The env var name where `provider` looks for its API key. */
 export function envKeyFor(provider: ProviderId): string {
   return ENV_KEYS[provider];
+}
+
+function errnoOf(err: unknown): string | undefined {
+  const meta = err instanceof ChovyError ? err.meta : undefined;
+  const errno = meta?.["errno"];
+  return typeof errno === "string" ? errno : undefined;
 }

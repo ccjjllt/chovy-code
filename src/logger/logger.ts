@@ -18,6 +18,7 @@ import {
   type Level,
   type LogRecord,
 } from "./format.js";
+import { formatChovyError, isChovyError } from "../types/errors.js";
 
 export type { Level } from "./format.js";
 
@@ -56,14 +57,22 @@ function emit(level: Exclude<Level, "silent">, scope: string | undefined,
               msgOrErr: string | Error, meta?: Record<string, unknown>): void {
   if (LEVEL_ORDER[level] < LEVEL_ORDER[core.level]) return;
 
+  const chovyErr = isChovyError(msgOrErr) ? msgOrErr : undefined;
   const record: LogRecord = {
     level,
-    msg: typeof msgOrErr === "string" ? msgOrErr : msgOrErr.message,
+    msg: chovyErr
+      ? formatChovyError(chovyErr)
+      : typeof msgOrErr === "string" ? msgOrErr : msgOrErr.message,
     ts: Date.now(),
     ...(scope ? { scope } : {}),
-    ...(meta ? { meta } : {}),
+    ...(chovyErr || meta ? {
+      meta: {
+        ...(chovyErr ? { code: chovyErr.code, ...(chovyErr.meta ?? {}) } : {}),
+        ...(meta ?? {}),
+      },
+    } : {}),
   };
-  if (msgOrErr instanceof Error) {
+  if (msgOrErr instanceof Error && !chovyErr) {
     record.err = {
       name: msgOrErr.name,
       message: msgOrErr.message,
