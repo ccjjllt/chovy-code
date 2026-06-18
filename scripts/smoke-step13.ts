@@ -143,7 +143,12 @@ async function main() {
   // ── 2. PermissionRequest deny (fast) short-circuits L6 ──────────────────
   console.log("\n[2] PermissionRequest deny short-circuits");
   {
-    const hook = cmdHook("PermissionRequest", "*", '{"ok":false,"reason":"policy deny"}', 200);
+    // 2000ms timeout: the spec says the deny is "fast" (sub-second), but on
+    // Windows the cold `node -e` spawn can exceed 200ms, which would let the
+    // hook engine treat the run as a timeout and fall through to L6 — losing
+    // the "policy deny" reason. The decisive-vs-fast property is what we
+    // care about; the absolute wall-clock isn't part of the spec.
+    const hook = cmdHook("PermissionRequest", "*", '{"ok":false,"reason":"policy deny"}', 2000);
     const eng = createHookEngine({
       cwd,
       sessionId: "s2",

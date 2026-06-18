@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）已完成构建并通过复验；Phase E 进行中——step-18（子 Agent 运行时）+ step-20（SwarmR dispatch 核心）+ step-21（Judge 聚合）已落地，下一步 step-19（内置角色）/ step-22（UI）**。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）全部完成构建并通过复验；下一步进入 Phase F（step-23 Goal Loop）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`（本轮修复 4 个跨 step 隐患 P3-P6）。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -57,14 +57,15 @@ chovy-code/
     ├── providers/            # 7 真实 provider + PCM + 通用 SSE + toolFormat 适配
     ├── tools/                # Tool v2 registry + ATP allocator + echo + fs / exec / web / meta 工具
     ├── harness/              # 缰绳层：permissions / hooks / sandbox
-    ├── agent/                # runAgent / QueryEngine shim + 子 Agent 运行时（pool / lifecycle / snapshot / builtin）
-    ├── swarm/                # SwarmR：router / pool-wrapper / concurrency / budgets / progress bus
-    └── types/                # provider / messages / tool 契约
+    ├── agent/                # runAgent / QueryEngine shim + 子 Agent 运行时（pool / lifecycle / snapshot / builtin / outputBuffer / swarmBus）
+    ├── swarm/                # SwarmR：router / pool-wrapper / concurrency / budgets / progress bus / judge / schemas
+    ├── engine/               # QueryEngine 主循环 + costTracker + streamHandler + messageNormalize + toolExecutor + runtimeRegistry + runHelpers
+    └── types/                # provider / messages / tool / agent 契约
 ```
 
-**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 并发限流 + 全局预算熔断 + 进度/生命周期 bus）。
+**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行 + 5 内置角色）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 自实现 p-limit 并发限流 + 全局预算 sticky-trip 熔断 + 进度/生命周期 bus）、Judge 聚合（4 schema + provider fallback 链 + tryFixJSON 五步修复 + ≤1 次自我修复 + 大 N 截断 + 取消独立 AC）、Ink UI 面板（SwarmPanel + AgentRow + AgentDetail + HotkeyBar + swarmStore + outputBuffer + Tab 焦点 + 16ms 节流）。
 各 Phase 的详细产物与验收结论见 `docs/complete/` 下对应报告；本文不逐步罗列。
-**未实现**：子 Agent UI 面板（step-22）、记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（对应 Phase E 尾 + F–I）。
+**未实现**：记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（Phase F–I）。
 
 ---
 
@@ -249,7 +250,8 @@ chovy chat "..."                 # 一次性
 chovy goal "<objective>"         # 长程任务入口（step-23 前为占位）
 # REPL 内也可输入 /goal <objective>
 chovy mem list|search|show       # 记忆查询
-chovy agent list                 # 列子 agent
+chovy agent list                 # 列活跃子 agent（pool 快照）
+chovy agent list --builtins      # 列 step-19 注册的 5 内置角色 + ACL + memory
 chovy provider list              # 列 provider
 chovy log tail                   # 看 telemetry
 ```
@@ -395,19 +397,25 @@ chovy log tail                   # 看 telemetry
 - HTTP 错误归一：非 2xx 包成 `ChovyError(PROVIDER_API_ERROR / PROVIDER_RATE_LIMIT)`，meta 带 `provider/url/status/bodySnippet`；上层捕到后走 `stopReason='final'` 早退路径。
 
 **queryEngine.ts 体量约束**：
-- step-16 spec §风险 + AGENTS.md §8：`src/engine/queryEngine.ts` ≤ 600 行。工具执行子流程（`executeToolCall` / `invokeTool`）已外提到 `src/engine/toolExecutor.ts`，保持主文件聚焦于"主循环 + 取消协议 + helper"。后续要新增主循环阶段（如 SCW 钩子）请优先扩展 helper，不要把逻辑塞回 queryEngine.ts。
+- step-16 spec §风险 + AGENTS.md §8：`src/engine/queryEngine.ts` ≤ 600 行（**硬限**）。phase-a-e 复验（P6）做了二次拆分以维持该不变量：
+  - 工具执行子流程（`executeToolCall` / `invokeTool`）→ `src/engine/toolExecutor.ts`（phase-a-d P1 抽离）
+  - SubAgentSpawn / SwarmRDispatch builder 注册存储 → `src/engine/runtimeRegistry.ts`（phase-a-e P6）
+  - 纯 helper（`resolveToolPool` / `runPreflight` / `fillBuildOptions` / `makeAgentId`）→ `src/engine/runHelpers.ts`（phase-a-e P6）
+  当前主文件 ~557 行，聚焦"主循环 + 取消协议 + run() 入口"。后续要新增主循环阶段（如 SCW 钩子）请优先扩展 helper / 抽到新 leaf 模块，**不要**把逻辑塞回 queryEngine.ts。`setSpawnFnBuilder` / `setDispatchFnBuilder` 经 queryEngine.ts re-export 保持公共 API 不变；调用方继续从 `engine/index.ts` import，无须改路径。
 
 **engine→providers 边**：`engine/costTracker.ts` import `providers/capabilities.CAPS` 是允许的（叶子直达，避免循环）；engine 不应 import provider 的具体 `complete/stream` 实现，统一通过 `providers/getProvider(id)` 拿 `Provider` 接口。
 
 ## 18. Phase E 不变量（Sub-Agent + SwarmR）
 
-> Phase E（step-18–22）产物/验收见 `docs/complete/step-20-swarm-router.md`、`docs/complete/step-21-judge-aggregator.md`。本节固化 step-20/step-21 跨步骤生效的不变量；step-22（UI）落地后追加对应小节。
+> Phase E（step-18–22）产物/验收见 `docs/complete/step-18-acceptance.md` ~ `step-22-acceptance.md` + `docs/complete/phase-a-e-acceptance.md`。本节固化 step-18~22 跨步骤生效的不变量；后续 Phase F-I 扩展对应模块时必须遵守。
 
 **单源规约**（接 §16/§17 同模式）：
+- `BuiltInAgentDefinition` → `src/types/agent.ts`（step-19 冻结）；5 内置角色（explorer / planner / verifier / critic / checkpoint-writer）通过 `src/agent/builtin/{exploreAgent,planAgent,verifyAgent,criticAgent,checkpointWriterAgent}.ts` + `registry.ts` 注册。`getSystemPrompt(ctx: SystemContext)` 是动态函数（不是静态字符串），便于角色 prompt 读 cwd / model / planMode。
+- **TOOL_PHASE 表键名 = registry 工具名（registry 单源）**：`src/agent/pool.ts` 的 `TOOL_PHASE` 表用于 SwarmPanel "⏳ <phase>" 标签，**键名必须**匹配 `src/tools/<family>/*.ts` 的 `name` 字段（`file_read` / `file_write` / `file_edit` 等）。phase-a-e 复验 P4 修复键名漂移；新增工具时需同步追加，否则 phase 退化到 `running <name>` fallback。
 - `DispatchRole` / `JudgeSchemaName` → `src/swarm/router.ts`（step-20 冻结）；wire schema 的 `explore/plan/verify/critic/custom` 与 runtime `AgentRole`（`explorer/planner/...`）经 `toAgentRole()` 映射，**不**重声明 union。
 - `DispatchInput` / `DispatchOutput` / `DispatchChildResult` → `src/swarm/router.ts`（step-20 冻结，B4 屏障）；后续 step-21（Judge）/ step-23（goal）扩展**追加**字段，不替换。
 - **handle 状态 + `subagent.*` telemetry 单源仍在 `agent/pool.ts`**：swarm 模块是 handle 状态的*观察者*（poll cost/phase 发 swarmBus 事件），**不**是 telemetry 第二发射源。`swarm.dispatch` telemetry 只由 `dispatch()` 发射一次（n + parallelism）。
-- **swarmBus 是 UI 通道，非 telemetry**：`progress` / `lifecycle` 事件给 step-22 Ink 面板订阅；它们不写 `~/.chovy/telemetry/`，与 `subagent.spawn`/`subagent.end`/`swarm.dispatch` 互不替代。
+- **swarmBus 是 UI 通道，非 telemetry**：`progress` / `lifecycle` / `cost` 事件由 step-22 Ink SwarmPanel 订阅；它们**永不**写 `~/.chovy/telemetry/`，与 `subagent.spawn` / `subagent.end` / `swarm.dispatch` 互不替代。`useSwarmState` 16ms 节流，`outputBuffer` 2KB 环形 + 60s TTL。
 
 **冻结接口**（字段名不改，扩展只追加可选字段）：
 - `ToolContext.dispatchSwarm?: DispatchSwarmFn`（step-20 追加，§16 兼容）：QueryEngine 在 `role === "main"` 时通过 `setDispatchFnBuilder` 注入；子 agent 默认拿不到（避免递归 fan-out，step-20 显式留给后续 step opt-in）。
@@ -447,3 +455,20 @@ chovy log tail                   # 看 telemetry
 - **`DispatchDeps.runJudge?` 注入**（测试用）：router 接受 `deps.runJudge` 覆盖真实 `runJudge`，离线 smoke 注入 stub verifier。生产路径走真实 `runJudge`。
 
 **per-prompt maxTokens 遗留**：wire schema 有 `maxTokens`，但 `SpawnInput` 当前只透传 `maxRounds`（step-18 pool 未实现 per-child token cap）。router 里 `TODO step-18 follow-up` 注释；字段保留在 schema 不删（step-20 spec 明列）。后续 step-18 扩展 `SpawnInput.maxTokens` 时 router 取消 TODO 即可。
+
+**内置角色不变量（step-19）**：
+- **least-privilege 工具合并**：caller `SpawnInput.tools` ∩ `roleDef.allowedTools`（caller **只能收紧**，不能放宽）；`disallowedTools` 取并集。空数组 = no-op（防误杀全部工具——若真要 0 工具，用 `disallowedTools` 列全名）。`mergeAllowlist` / `mergeDenylist` 在 `agent/pool.ts:runChild` 调用，并经 `_mergeAllowlistForTesting` / `_mergeDenylistForTesting` 暴露给 smoke。
+- **角色定义 ≠ 安全边界**：`checkpoint-writer.allowedTools = ["file_read","file_write"]` 是工具池过滤，**不**限制写路径。step-26 必须在权限/沙箱层把写路径收紧到 `~/.chovy/projects/<hash>/checkpoints/`。
+- **`subagent_type` enum 故意不含 checkpoint-writer**：`tools/meta/agent.ts` 的 zod enum 只列 Explore/Plan/Verify/Critic；checkpoint-writer 由 step-26 / SCW 直接 `pool.spawn({role:"checkpoint-writer"})` 调用，不暴露给主 agent。
+- **`omitMemory` 透传**：`BuiltInAgentDefinition.omitMemory` → `AgentPromptInput.omitMemory` → `prompts/builders.ts` 跳过动态 memory 段（节省 token）。explorer / checkpoint-writer 默认 true；planner / verifier / critic 默认 false。
+- **优先级**：caller `SpawnInput` > `roleDef` > 全局默认。`provider` / `model` / `budgetUSD` / `timeoutMs` / `maxRounds` 全部按此优先级合并。
+
+**Agent UI 不变量（step-22）**：
+- **swarmBus 是 UI-only 进程内 pub/sub**（接 §18 单源）：`src/agent/swarmBus.ts` 永不持久化；`subagent.spawn` / `subagent.end` telemetry 仍由 pool 单源发射。
+- **`SubAgentHandle` 字段冻结**：step-22 不向 handle 加任何字段。实时 phase 经 `setPhase` 写入既有 `handle.phase`；实时 tokens 经 `addUsage` 写入既有 `tokensIn/tokensOut`；流式输出经独立 `outputBuffer`（id-keyed 2KB 环形 + 60s TTL + `pool.reset()` 清空）。
+- **节流 + 性能**：`useSwarmState` 16ms 节流（`setTimeout(flush, 16)` + dirty flag 合并 N 个事件 → 1 次 setState）；`useSwarmTick` 1000ms 计时；`AgentDetail` 输出预览 200ms pull；100 agent 压测 < 50ms（smoke-step22 stress 验证）。
+- **键盘焦点 Tab 切换**：REPL 持 `focus: "input"|"panel"`，busy 时不切。SwarmPanel `useInput` `isActive = focused && !detail`；AgentDetail overlay `isActive = detail !== null`（互斥独占）。step-23 加 GoalPanel 时复用同一 focus state（扩展为 `"input"|"panel"|"goal"`）。
+- **`CHOVY_NO_SWARM_PANEL=1`**：Windows ConHost 闪烁缓解开关，禁用面板挂载但 HeaderBar swarm chip 仍显示计数。
+- **`onToken` / `onToolStart` / `onUsage` 回调 best-effort**：pool 在 `runChild` 给 `engine.run` 传这三个回调驱动 swarmBus；每个回调 try/catch + swallow——UI-only 副作用绝**不**能让子 agent run 失败。step-20 dispatch / step-23 goal 不要在 `onToken` 里做影响结果的事。
+
+**子 Agent 取消独立 AC 不变量（再强调，§9 代码化）**：每个 `SubAgentHandle` 一个 `new AbortController()`；父 signal 仅作为 `addEventListener("abort", () => childAc.abort())` 的触发源。`pool.runChild` 把 `entry.ac.signal` 传给 `engine.run` 作 `abortSignal`，engine 内部再包一层 AC（双层包装与父隔离）。SwarmR router 也是同模式（本地 AC 包装 caller signal）。**绝不**把 `parentCtx.parentSignal` 直接传 `engine.run`。

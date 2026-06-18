@@ -39,7 +39,7 @@ import { logger } from "../logger/index.js";
 import { emitTelemetry, getTelemetrySink } from "../telemetry/index.js";
 import { loadConfig, type ChovyConfig, type PermissionMode } from "../config/index.js";
 import { projectId as deriveProjectId } from "../fs/paths.js";
-import { getTool, listTools, describeTools } from "../tools/index.js";
+import { describeTools } from "../tools/index.js";
 import type { DescribedTool } from "../tools/index.js";
 import { getProvider } from "../providers/index.js";
 import {
@@ -50,7 +50,6 @@ import {
 } from "../prompts/index.js";
 import {
   createPermissionEngineState,
-  hasPermission,
   permissionModeFromString,
   type PermissionEngineState,
 } from "../harness/permissions/index.js";
@@ -61,7 +60,6 @@ import type {
   ChatMessage,
   ContextBudget,
   ParentRuntimeCtx,
-  PermissionPreflight,
   ProviderId,
   SpawnFn,
   Tool,
@@ -73,6 +71,12 @@ import { CostTracker, type TokenUsage } from "./costTracker.js";
 import { normalizeForProvider, pruneOrphanToolMessages } from "./messageNormalize.js";
 import { runStream } from "./streamHandler.js";
 import { executeToolCall } from "./toolExecutor.js";
+import {
+  fillBuildOptions,
+  makeAgentId,
+  resolveToolPool,
+  runPreflight,
+} from "./runHelpers.js";
 
 // ---------------------------------------------------------------------------
 // Public surface (frozen at step-16 per architecture.md §3.3)
@@ -158,59 +162,19 @@ export interface QueryEngineDeps {
   prices?: Record<string, import("./costTracker.js").ModelPrice>;
 }
 
-// ---------------------------------------------------------------------------
-// Sub-agent spawn factory registration (step-18)
-// ---------------------------------------------------------------------------
-//
-// The agent layer (`src/agent/`) wires its sub-agent pool via
-// `setSpawnFnBuilder()` at module load time. We accept a builder rather
-// than a `SpawnFn` because the builder must close over the engine's *live*
-// message array (which only exists once `run()` starts and is internal to
-// the engine).
-//
-// Registration is module-level state (one-time write at import time) to
-// avoid a circular dependency: pool.ts → queryEngine.ts is fine, but
-// queryEngine.ts → pool.ts would cycle. The same pattern works for any
-// future "engine wants to call into agent layer" use.
-
-/** Builder: given a parent runtime context (with a *live* messages array
- *  reference), return a SpawnFn the harness can attach to ToolContext. */
-export type SpawnFnBuilder = (parentCtx: ParentRuntimeCtx) => SpawnFn;
-
-let spawnFnBuilder: SpawnFnBuilder | null = null;
-
-/**
- * Register the sub-agent spawn factory. Called once at import time by
- * `src/agent/index.ts`. Passing `null` clears the registration (test-only).
- */
-export function setSpawnFnBuilder(builder: SpawnFnBuilder | null): void {
-  spawnFnBuilder = builder;
-}
-
-/**
- * Builder: given a parent runtime context, return a `dispatchSwarm` handle
- * bound to it (step-20). The handle closes over the parent's live message
- * array + abort signal so a dispatch inherits the parent snapshot and
- * cascades cancellation the same way a single spawn does.
- */
-export type DispatchFnBuilder = (
-  parentCtx: ParentRuntimeCtx,
-) => ToolContext["dispatchSwarm"];
-
-let dispatchFnBuilder: DispatchFnBuilder | null = null;
-
-/**
- * Register the SwarmR dispatch factory (step-20). Called once at import
- * time by `src/swarm/index.ts` wiring (mirrors `setSpawnFnBuilder`). The
- * engine never imports the swarm module directly — doing so would create a
- * cycle (engine → swarm → agent → engine), so the registration indirection
- * keeps the dependency graph acyclic.
- *
- * Passing `null` clears the registration (test-only).
- */
-export function setDispatchFnBuilder(builder: DispatchFnBuilder | null): void {
-  dispatchFnBuilder = builder;
-}
+// Sub-agent / SwarmR builder hooks (step-18 / step-20). Registration storage
+// lives in `runtimeRegistry.ts` (AGENTS.md §17 single-source); we re-export the
+// setters so the engine barrel keeps a stable public API.
+export {
+  setSpawnFnBuilder,
+  setDispatchFnBuilder,
+  type SpawnFnBuilder,
+  type DispatchFnBuilder,
+} from "./runtimeRegistry.js";
+import {
+  getSpawnFnBuilder,
+  getDispatchFnBuilder,
+} from "./runtimeRegistry.js";
 
 // ---------------------------------------------------------------------------
 // Engine class
@@ -287,7 +251,9 @@ export class QueryEngine {
     // role gets a dispatch handle; a sub-agent dispatching would recurse
     // through the pool, and step-20 leaves that opt-in to a later step.
     let dispatchSwarm: ToolContext["dispatchSwarm"] | undefined;
-    if (spawnFnBuilder && role === "main") {
+    const spawnBuilder = getSpawnFnBuilder();
+    const dispatchBuilder = getDispatchFnBuilder();
+    if (spawnBuilder && role === "main") {
       const parentCtx: ParentRuntimeCtx = {
         parentId: agentId,
         parentRole: role,
@@ -297,8 +263,8 @@ export class QueryEngine {
         parentMessages: messages, // live ref — mutated as the run progresses
         parentSignal: ac.signal,
       };
-      spawnFn = spawnFnBuilder(parentCtx);
-      if (dispatchFnBuilder) dispatchSwarm = dispatchFnBuilder(parentCtx);
+      spawnFn = spawnBuilder(parentCtx);
+      if (dispatchBuilder) dispatchSwarm = dispatchBuilder(parentCtx);
     }
 
     // Build the runtime ToolContext once; round-level changes go through
@@ -309,7 +275,7 @@ export class QueryEngine {
       logger: log,
       permissions: {
         preflight: (toolName: string, args: unknown) =>
-          this.runPreflight(toolName, args, ctx, permState),
+          runPreflight(toolName, args, ctx, permState),
       },
       hooks: {
         emit: (event: string, payload: unknown) => {
@@ -343,7 +309,7 @@ export class QueryEngine {
     });
 
     // Tool pool selection: callers may inject a custom subset (sub-agents do).
-    const toolPool = this.resolveToolPool(opts);
+    const toolPool = resolveToolPool(opts);
 
     // (messages array is allocated above so the spawnFn closure picks up
     // the live reference — see the step-18 spawn wiring before `ctx`.)
@@ -392,7 +358,7 @@ export class QueryEngine {
 
         // ── 1. system prompt ──────────────────────────────────────────────
         const effective: EffectivePrompt = buildEffectiveSystemPrompt(
-          this.fillBuildOptions(opts, {
+          fillBuildOptions(opts, {
             provider: opts.provider,
             model,
             cwd,
@@ -583,72 +549,7 @@ export class QueryEngine {
     };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Helpers
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** Adapter that satisfies `PermissionEngine.preflight?`. */
-  private async runPreflight(
-    toolName: string,
-    args: unknown,
-    ctx: ToolContext,
-    permState: PermissionEngineState,
-  ): Promise<PermissionPreflight> {
-    const tool = getTool(toolName);
-    if (!tool) {
-      return { outcome: "deny", reason: `unknown tool "${toolName}"` };
-    }
-    const decision = await hasPermission(tool, args, ctx, permState);
-    return {
-      outcome: decision.outcome,
-      reason: decision.reason,
-      matchedRule: decision.matchedRule,
-    };
-  }
-
-  private resolveToolPool(opts: QueryRunOptions): Tool[] {
-    const all = opts.tools ?? listTools({ enabled: true });
-    let pool = all;
-    if (opts.toolAllowlist && opts.toolAllowlist.length > 0) {
-      const allow = new Set(opts.toolAllowlist);
-      pool = pool.filter((t) => allow.has(t.name));
-    }
-    if (opts.toolDenylist && opts.toolDenylist.length > 0) {
-      const deny = new Set(opts.toolDenylist);
-      pool = pool.filter((t) => !deny.has(t.name));
-    }
-    return pool;
-  }
-
-  private fillBuildOptions(
-    opts: QueryRunOptions,
-    runCtx: { provider: ProviderId; model: string; cwd: string; planMode: boolean },
-  ): BuildOptions {
-    const base: BuildOptions = {
-      context: {
-        cwd: { cwd: runCtx.cwd },
-        model: { provider: runCtx.provider, model: runCtx.model },
-        planMode: runCtx.planMode,
-      },
-    };
-    if (!opts.systemPromptOpts) return base;
-    return {
-      ...base,
-      ...opts.systemPromptOpts,
-      context: {
-        ...base.context,
-        ...(opts.systemPromptOpts.context ?? {}),
-      },
-    };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeAgentId(): string {
-  const g = globalThis as { crypto?: { randomUUID?: () => string } };
-  if (g.crypto?.randomUUID) return `agt_${g.crypto.randomUUID()}`;
-  return `agt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  // Class-level helpers (resolveToolPool / fillBuildOptions / runPreflight /
+  // makeAgentId) live in `runHelpers.ts` to keep this file under the §17
+  // 600-line cap. Call sites use the module-level functions directly.
 }

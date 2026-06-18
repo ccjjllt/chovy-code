@@ -9,36 +9,78 @@
 
 ---
 
-## 0. 项目当前状态（Phase A-D 已完成并复验）
+## 0. 项目当前状态（Phase A-E 已完成并复验）
 
 ```
 chovy-code/
-├── bin/chovy.js               # 已构建的 CLI 入口（自动产物，700.9 KB）
+├── bin/chovy.js               # 已构建的 CLI 入口（自动产物，757.0 KB）
 ├── docs/complete/             # 各 step / phase 验收报告
 ├── package.json               # Bun + React 18 + Ink 5 + Zod 3 + Commander 12
 ├── scripts/build.ts           # bun.build 打包脚本 + smoke 脚本
 └── src/
     ├── index.ts               # public barrel
     ├── version.ts
-    ├── agent/                 # runAgent / runQuery 兼容 shim → QueryEngine
-    ├── engine/                # QueryEngine + costTracker + streamHandler + messageNormalize + toolExecutor
+    ├── agent/                 # runAgent / runQuery shim + 子 Agent 运行时
+    │   ├── pool.ts            # SubAgentPool 100-cap + lifecycle + cascade abort
+    │   ├── lifecycle.ts       # SubAgentHandle 状态机 + bus emit
+    │   ├── snapshot.ts        # 父→子 ParentContextSnapshot
+    │   ├── outputBuffer.ts    # 2KB 环形 + 60s TTL（UI-only）
+    │   ├── swarmBus.ts        # progress/lifecycle/cost UI pub/sub
+    │   └── builtin/           # step-19: 5 内置角色
+    │       ├── registry.ts
+    │       ├── exploreAgent.ts / planAgent.ts / verifyAgent.ts
+    │       └── criticAgent.ts / checkpointWriterAgent.ts
+    ├── swarm/                 # step-20/21: SwarmR + Judge
+    │   ├── router.ts          # dispatch fan-out + watchdog + judge 集成
+    │   ├── pool.ts            # thin wrapper over agent/pool（叶子直达）
+    │   ├── concurrency.ts     # 自实现 p-limit（slot 恰好 claim 一次）
+    │   ├── budgets.ts         # GlobalBudget sticky-trip
+    │   ├── progress.ts        # swarmBus 工厂（与 agent/swarmBus 同源）
+    │   ├── judge.ts           # 4 schema + provider fallback + 自我修复
+    │   ├── schemas.ts         # ConsensusSchema / Compare / Rank / CustomMeta
+    │   └── prompts/*.txt      # 4 段 judge prompt（与 judge.ts 内联同步）
+    ├── engine/                # QueryEngine + costTracker + streamHandler
+    │   │                      # + messageNormalize + toolExecutor
+    │   ├── queryEngine.ts     # 主循环 + 取消 + run() 入口（≤600 行）
+    │   ├── runtimeRegistry.ts # SpawnFnBuilder / DispatchFnBuilder 注册存储
+    │   └── runHelpers.ts      # resolveToolPool / fillBuildOptions / makeAgentId
     ├── prompts/               # 5 层 system prompt + boundary + PSF
     ├── cli/
-    │   ├── index.tsx          # commander 入口
-    │   └── components/        # AgentRepl + StatusLine + HeaderBar + MessageList
+    │   ├── index.tsx          # commander 入口（agent list --builtins 等）
+    │   ├── repl.tsx           # REPL + Tab 焦点切换
+    │   ├── state/swarmStore.ts # useSwarmState 16ms 节流
+    │   └── components/        # AgentRepl + StatusLine + HeaderBar(swarm chip)
+    │       │                  # + MessageList + SwarmPanel + AgentRow
+    │       │                  # + AgentDetail + HotkeyBar
     ├── config/                # zod 校验的 env 配置
     ├── logger/                # leveled logger
     ├── providers/             # 7 真实 provider + PCM + 通用 SSE + toolFormat
-    ├── tools/                 # Tool v2 registry + ATP allocator + fs / exec / web / meta tools
+    ├── tools/                 # Tool v2 registry + ATP allocator
+    │                          # + fs / exec / web / meta（含 dispatch + agent）
     ├── harness/               # permissions / hooks / sandbox
-    └── types/                 # ChatMessage / Tool / Provider 等契约
+    └── types/                 # ChatMessage / Tool / Provider / Agent 等契约
 ```
 
-**已完成并复验**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（ATP 描述 + 5 层 prompt + 6 层权限 + 12 hook 事件 + 流式 + 成本 + 取消）、5 层 system prompt 分层 + PSF、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵、通用 SSE 解析、工具格式适配（含 MiniMax json-mode 降级）。
-Phase A（step-01–05）Foundation、Phase B（step-06–11）Tool System v2、Phase C（step-12–14）Harness、Phase D（step-15–17）Agent Core 全部通过复验。
-**未实现**：子智能体运行时、SwarmR、Judge、记忆/checkpoint、目标循环、上下文管理、技能图（对应 Phase E–I）。
+**已完成并复验**：
+- Phase A：类型/错误模型、配置/secrets/features、logger/telemetry、safeFs/chovy
+  home、CLI/REPL 骨架。
+- Phase B：Tool Protocol v2、ATP 分配器、fs/exec/web/meta 10 个核心工具。
+- Phase C：6 层权限引擎、12 事件 hook 引擎、文件系统/命令沙箱。
+- Phase D：5 层 system prompt + 静态/动态分区 + PSF；QueryEngine 主循环 +
+  costTracker（PCM 派生）+ streamHandler + messageNormalize + toolExecutor +
+  runtimeRegistry + runHelpers；7 真实 provider + PCM + 通用 SSE + toolFormat。
+- **Phase E**：子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子
+  上下文快照 + 取消 cascade + 后台执行）+ 5 内置角色（explorer / planner /
+  verifier / critic / checkpoint-writer，工具 ACL + omitMemory + 动态
+  getSystemPrompt）+ SwarmR dispatch（并行 fan-out ≤100 + 异构 provider 路由 +
+  自实现 p-limit + 全局预算 sticky-trip + swarmBus）+ Judge 聚合（4 schema +
+  provider fallback + tryFixJSON 五步修复 + ≤1 次自我修复 + 大 N 截断 + 取消
+  独立 AC）+ Ink UI 面板（SwarmPanel + AgentRow + AgentDetail + HotkeyBar +
+  swarmStore + outputBuffer + Tab 焦点 + 16ms 节流 + virtualization）。
 
-最新 A-D 复验报告见 [`complete/phase-a-d-acceptance.md`](./complete/phase-a-d-acceptance.md)；A-C 旧报告保留在 [`complete/phase-a-c-acceptance.md`](./complete/phase-a-c-acceptance.md)。
+**未实现**：记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（Phase F–I）。
+
+最新 A-E 复验报告见 [`complete/phase-a-e-acceptance.md`](./complete/phase-a-e-acceptance.md)；A-D 报告保留在 [`complete/phase-a-d-acceptance.md`](./complete/phase-a-d-acceptance.md)；A-C 旧报告在 [`complete/phase-a-c-acceptance.md`](./complete/phase-a-c-acceptance.md)。
 
 ---
 

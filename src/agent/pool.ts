@@ -430,16 +430,26 @@ class InMemoryPool implements SubAgentPool {
 // (not in lifecycle.ts) because the mapping is a UI concern; the runtime
 // type stays UI-agnostic. Unknown tools fall back to `running <name>`.
 
+// Keys MUST match the registered tool names (see `src/tools/fs/*.ts` etc.).
+// Step-19 acceptance §7 flagged that the original draft used short aliases
+// (`read`/`write`/`edit`); the registry actually exposes `file_read` /
+// `file_write` / `file_edit`, so the live phase label fell back to
+// "running file_read" instead of "reading file". Kept aligned to the
+// registry single source — if a tool gets renamed, update here too.
 const TOOL_PHASE: Record<string, string> = {
-  read: "reading file",
-  write: "writing file",
-  edit: "editing file",
+  file_read: "reading file",
+  file_write: "writing file",
+  file_edit: "editing file",
   glob: "finding files",
   grep: "searching content",
   bash: "running command",
   web_search: "searching web",
   web_fetch: "fetching page",
   todo_write: "updating todos",
+  ask_user_question: "asking user",
+  skill: "loading skill",
+  agent: "spawning sub-agent",
+  dispatch: "dispatching swarm",
 };
 
 function phaseForTool(name: string): string {

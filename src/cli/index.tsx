@@ -15,6 +15,7 @@ import { ensureHomeDirs, ensureProjectDirs } from "../fs/index.js";
 import { listProviders, getProvider } from "../providers/index.js"; // side-effect: registers providers
 import { listTools } from "../tools/index.js"; // side-effect: registers tools
 import { getSubAgentPool } from "../agent/index.js"; // step-22: pool singleton for `agent list`
+import { listBuiltinAgents } from "../agent/builtin/index.js"; // step-19: built-in role registry
 import { ChovyError } from "../types/errors.js";
 import { AgentRepl } from "./components/AgentRepl.js";
 import { ChovyRepl } from "./repl.js";
@@ -229,10 +230,31 @@ mem.command("search <query>").description("全文搜索记忆")
   });
 
 // `chovy agent ...` — step-22: list live sub-agent handles from the pool.
-const agent = program.command("agent").description("子 agent 操作（step-22）");
-agent.command("list").description("列出活跃子 agent")
-  .action((...args: unknown[]) => {
-    resolveCtxFromActionArgs(args);
+//   `agent list`            → live pool snapshot
+//   `agent list --builtins` → registered built-in role definitions (step-19)
+const agent = program.command("agent").description("子 agent 操作（step-19/22）");
+agent.command("list")
+  .description("列出活跃子 agent；--builtins 列内置角色")
+  .option("--builtins", "列出 step-19 注册的内置角色定义")
+  .action((options: { builtins?: boolean }, ...rest: unknown[]) => {
+    resolveCtxFromActionArgs(rest);
+    if (options.builtins) {
+      const defs = listBuiltinAgents();
+      if (defs.length === 0) {
+        logger.info("（暂无内置角色注册）");
+        return;
+      }
+      for (const d of defs) {
+        const tools = d.allowedTools
+          ? `allow=[${d.allowedTools.join(",")}]`
+          : d.disallowedTools
+            ? `deny=[${d.disallowedTools.join(",")}]`
+            : "tools=*";
+        const mem = d.omitMemory ? "omitMemory" : "memory";
+        logger.info(`${d.role.padEnd(18)}  ${tools}  ${mem}`);
+      }
+      return;
+    }
     // Force the agent barrel to load so the pool singleton + telemetry are
     // wired even though the CLI doesn't run a QueryEngine here.
     void getSubAgentPool;
