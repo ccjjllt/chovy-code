@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）已完成构建并通过复验；下一步进入 Phase D（Agent Core）**。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）已完成构建并通过复验；下一步进入 Phase E（Sub-Agent System / SwarmR / Judge）**。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -44,7 +44,9 @@ chovy-code/
 └── src/
     ├── index.ts              # public barrel
     ├── version.ts
-    ├── agent/agent.ts        # 最小 agent loop（completion → tool → repeat）
+    ├── agent/                # runAgent / runQuery 兼容 shim → QueryEngine
+    ├── engine/               # QueryEngine 主循环 + costTracker + streamHandler + messageNormalize + toolExecutor
+    ├── prompts/              # 5 层 system prompt + boundary + PSF（fingerprint）
     ├── cli/index.tsx         # commander 入口（subcommands + REPL 路由）
     ├── cli/repl.tsx          # step-05 交互式 REPL 主屏
     ├── cli/components/       # AgentRepl / StatusLine / HeaderBar / MessageList
@@ -52,16 +54,15 @@ chovy-code/
     ├── fs/                   # chovy home / project paths / safeFs
     ├── logger/               # 结构化 logger
     ├── telemetry/            # 本地 JSONL telemetry sink
-    ├── providers/            # registry + openai 参考实现 + 6 个 scaffold
+    ├── providers/            # 7 真实 provider + PCM + 通用 SSE + toolFormat 适配
     ├── tools/                # Tool v2 registry + ATP allocator + echo + fs / exec / web / meta 工具
     ├── harness/              # 缰绳层：permissions / hooks / sandbox
     └── types/                # provider / messages / tool 契约
 ```
 
-**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop（构造 `ToolContext` 并下发到 `tool.run`）与流式 UI 渲染；
-Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、9 个核心工具（fs / exec / web / meta）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）。
+**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、9 个核心工具（fs / exec / web / meta）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）。
 各 Phase 的详细产物与验收结论见 `docs/complete/` 下对应报告；本文不逐步罗列。
-**未实现**：QueryEngine、system prompt 分层、子智能体真实运行、记忆/checkpoint、目标循环、技能图、非 openai provider 的真实网络接线（对应 Phase D–I）。
+**未实现**：子智能体运行时（SubAgentHandle / lifecycle）、SwarmR + Judge、记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（对应 Phase E–I）。
 
 ---
 
@@ -345,3 +346,53 @@ chovy log tail                   # 看 telemetry
 **harness→tools 边**：harness 模块是叶子，只 reach `tools/exec/ast.js` + `tools/exec/classification.js` 等零外部依赖纯函数叶子，不引入 tool registry，无循环。后续 harness 模块复用 tools 纯函数时照此例 reach 叶子而非 barrel。hook 层 shell 选择 + killTree 独立实现，不 reach `tools/exec/bash.ts`；matcher 通配语法是 `rules.ts` 的精简端口（不 import）。
 
 **rules.json / settings.json 缺失静默**：ENOENT 静默跳过（errno 从 `ChovyError.meta.errno` 提取，因 safeFs 把 node errno 包进 `MEMORY_IO`）；坏 JSON/坏行 warn + 跳过，不抛。
+
+## 17. Phase D 不变量（Agent Core：System Prompt + QueryEngine + Providers）
+
+> Phase D（step-15–17）产物/验收见 `docs/complete/step-15-system-prompt.md`、`step-16-acceptance.md`、`step-17-providers-real.md`、`phase-a-d-acceptance.md`。本节固化跨步骤生效的不变量；后续 Phase E-I 扩展对应模块时必须遵守。
+
+**单源规约**（接 §16 同模式；字面量/数据只在一处声明，下游 re-export，禁止重声明）：
+- `SystemPromptLayer` → `src/prompts/builders.ts`（step-15 冻结）：`override`/`coordinator`/`agent`/`custom`/`default` 5 层；后续 step-16/19 通过 `import type` 复用，禁止重声明。
+- `PromptShape` → `src/prompts/fingerprint.ts`（step-15 冻结）：`telemetry/events.ts` 仅 `export type` 透传；step-16+ 用 `import type { PromptShape } from "@chovy/prompts"` 或 telemetry barrel。
+- **PCM 单源**：`src/providers/capabilities.ts` 是 7 provider 能力 + 价格的唯一权威。`engine/costTracker.ts` 的 `PROVIDER_DEFAULTS` 通过 IIFE **结构性派生**自 `CAPS.pricing`（不再手抄表，避免漂移）；`DEFAULT_PRICES` 的 per-model 行仍然是 SKU 级覆盖，与 PCM provider 兜底解耦但不得倒挂（PR 调整 PCM 价格时无需改 PROVIDER_DEFAULTS，自动同步）。
+- **SSE 单源**：`src/providers/streaming.ts` 是 chovy-code 唯一的 SSE 解析器。新增 provider 只在 `mergeDelta(family, ...)` 加 case + 在 `capabilities.ts` 声明 `family`，**禁止**另写解析器。
+- **Tool 格式单源**：`src/providers/toolFormat.ts` 把 zod→JSON schema→各家原生格式收敛在一处。Provider 内部不允许直接 `Object.entries(zodSchema)` 自行转换。
+
+**冻结接口**（字段名不改，扩展只追加可选字段）：
+- `BuildOptions` / `EffectivePrompt` / `SystemContext`（step-15 冻结）：boundary 标记位置 `<!--chovy:dynamic-->` 必须出现在 default prompt **之后**、动态片段**之前**；override 路径无标记是合法的（PSF 仍能算）。
+- `QueryEngine.run(opts)` / `QueryRunOptions` / `QueryRunResult` / `StopReason`（step-16 冻结，B2 屏障）：扩展**追加**字段；调用方一次性 prompt 走 `runAgent(prompt, opts)`、多轮走 `runQuery(messages, opts)`，子 agent / swarm / goal **直接** `new QueryEngine().run({...})`。
+- `Provider.complete` / `Provider.stream` 增强签名（step-17 冻结，B3 屏障）：`ProviderRequestOptions.toolSpecs?: ProviderToolSpec[]` 是新增可选字段（不改 `tools: string[]`），让 ATP 已选 lean/full 直接下发。
+
+**telemetry 单源**：
+- `prompt.shape` 事件**只**由 QueryEngine 每轮发射一次（`queryEngine.ts:run` 内部）；shape 字段类型 = 真实的 `PromptShape`（来自 prompts/fingerprint），不再是占位结构。
+- `agent.cost` 事件**只**由 `engine/costTracker.ts` 的 `record()` 发射；QueryEngine 不直接 emit；usage 走 `usage` 字段。
+- `agent.start` / `agent.end` 事件由 QueryEngine 发射（agent 生命周期单源）；子 agent 在 step-18 落地后保持同一来源。
+
+**5 层 system prompt 不变量**：
+- `override` 短路其它 4 层（含 `defaultAppend`）；其余 `coordinator → agent → custom → default(+append)` 顺序前置堆叠。
+- `agent.omitMemory:true` 跳过动态 memory/notes 段（least-context；步骤 19 explore 角色用）。
+- `planMode:true` 在 default 静态侧追加 `PLAN_NOTE`——**故意**放静态侧：一次会话内 mode 稳定，PSF 缓存仍受益；切 mode 等价于切 session（staticHash 必变）。
+- 默认 prompt 不引入时间戳 / 随机性 / cwd / model id，否则破坏 staticHash 稳定性。
+
+**PSF（Prompt Shape Fingerprint）不变量**：
+- 算法固定为 **FNV-1a 32-bit 纯 TS**（`Math.imul` + `>>> 0` 转无符号），不依赖 `Bun.hash`；`stableJson` 递归排序键，保证 `{a:1,b:2}` 与 `{b:2,a:1}` 同 hash（防 ATP 迭代顺序震荡）。
+- `perToolHash` 三元素 = `level | description | stableJson(schema)`；任一变更必反映在 hash 上（验收 4）。
+- `toolsHash = fnv1a(toolNames.join("|"))` 与 ATP 输出顺序绑定；同输入是确定性的。
+
+**取消信号不变量（QueryEngine）**：
+- engine 内**本地 AbortController** 包装外部 `opts.abortSignal`（§9 红线："不共享父 signal" 的代码化）；budget 超限等程序内取消用 `ac.abort()`，不污染调用方 signal。
+- 检测点：每轮入口 / `runStream` for-await 内 / assistant 推入后 / `executeToolCall.invokeTool` 包装层；任意一处感知 abort → `stopReason='cancelled'`。
+- `cancelGraceMs`（默认 2000ms）让工具优雅退出；超时返回 `{ ok:false, content:"Tool cancelled by user (timed out…)", errorCode:"INTERNAL" }`。
+- fetch `AbortError` 在 `providers/common.wrapNetwork` 中**直接 rethrow**，不包装成 `PROVIDER_API_ERROR`，确保取消语义不被 provider 错误遮蔽。
+
+**Provider 真实接线不变量（step-17）**：
+- 工具支持 3 模式：`native`（OpenAI/Anthropic/Gemini/DeepSeek/GLM/Kimi）/ `json-mode`（MiniMax）/ `no`（保留态）。MiniMax json-mode 降级路径冻结：`<tool_use>{"name":..,"arguments":..}</tool_use>` envelope；① system prompt 注入由 `toJsonModePromptInjection` 统一产生；② 流式路径在还原前不向 UI 转发原始 token；③ 解析端永远兜底（envelope 非法即丢弃）。
+- **OpenAI 兼容广播**：DeepSeek / Kimi / GLM / MiniMax 都通过 `createOpenAICompatProvider` 工厂构造；新增 OpenAI 兼容渠道优先走工厂，**不**复制粘贴 fetch 代码。
+- **Auth header 边界**：每个 provider 的 `auth(apiKey)` 是构造 header 的唯一入口（`Authorization: Bearer` / `x-api-key` / `?key=`）；不允许在 `complete/stream` 内联手写。
+- **`toolSpecs` 优于 `tools: string[]`**：`toolSpecs` 非空时 provider **必须**消费它（ATP 已选的 lean/full）；否则才走 registry 默认 lean。
+- HTTP 错误归一：非 2xx 包成 `ChovyError(PROVIDER_API_ERROR / PROVIDER_RATE_LIMIT)`，meta 带 `provider/url/status/bodySnippet`；上层捕到后走 `stopReason='final'` 早退路径。
+
+**queryEngine.ts 体量约束**：
+- step-16 spec §风险 + AGENTS.md §8：`src/engine/queryEngine.ts` ≤ 600 行。工具执行子流程（`executeToolCall` / `invokeTool`）已外提到 `src/engine/toolExecutor.ts`，保持主文件聚焦于"主循环 + 取消协议 + helper"。后续要新增主循环阶段（如 SCW 钩子）请优先扩展 helper，不要把逻辑塞回 queryEngine.ts。
+
+**engine→providers 边**：`engine/costTracker.ts` import `providers/capabilities.CAPS` 是允许的（叶子直达，避免循环）；engine 不应 import provider 的具体 `complete/stream` 实现，统一通过 `providers/getProvider(id)` 拿 `Provider` 接口。

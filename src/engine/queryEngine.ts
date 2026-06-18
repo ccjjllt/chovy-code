@@ -35,7 +35,6 @@
  *     binds `hasPermission` to live state; engine never touches globals.
  */
 
-import type { ZodType } from "zod";
 import { logger } from "../logger/index.js";
 import { emitTelemetry, getTelemetrySink } from "../telemetry/index.js";
 import { loadConfig, type ChovyConfig, type PermissionMode } from "../config/index.js";
@@ -64,7 +63,6 @@ import type {
   PermissionPreflight,
   ProviderId,
   Tool,
-  ToolCall,
   ToolContext,
   ToolResult,
   ToolSession,
@@ -72,6 +70,7 @@ import type {
 import { CostTracker, type TokenUsage } from "./costTracker.js";
 import { normalizeForProvider, pruneOrphanToolMessages } from "./messageNormalize.js";
 import { runStream } from "./streamHandler.js";
+import { executeToolCall } from "./toolExecutor.js";
 
 // ---------------------------------------------------------------------------
 // Public surface (frozen at step-16 per architecture.md §3.3)
@@ -433,7 +432,7 @@ export class QueryEngine {
         // can short-circuit on its own.
         const toolMessages = await Promise.all(
           stream.completion.toolCalls.map((call) =>
-            this.executeToolCall(call, ctx, permState, opts, cancelGraceMs),
+            executeToolCall(call, ctx, permState, opts, cancelGraceMs),
           ),
         );
         for (const m of toolMessages) {
@@ -553,222 +552,6 @@ export class QueryEngine {
         ...(opts.systemPromptOpts.context ?? {}),
       },
     };
-  }
-
-  /**
-   * Run a single tool call: hook → permission → schema parse → run →
-   * post-hook. Returns the `tool` ChatMessage to push onto the transcript.
-   *
-   * Telemetry: emits exactly one `tool.call` event (single source per
-   * AGENTS.md §17). Hook failures are advisory and never poison the tool
-   * result.
-   */
-  private async executeToolCall(
-    call: ToolCall,
-    ctx: ToolContext,
-    permState: PermissionEngineState,
-    opts: QueryRunOptions,
-    cancelGraceMs: number,
-  ): Promise<ChatMessage> {
-    const tool = getTool(call.name);
-    if (!tool) {
-      logger.warn(`Unknown tool requested: ${call.name}`);
-      emitTelemetry({ type: "tool.call", tool: call.name, ok: false, durMs: 0 });
-      return {
-        role: "tool",
-        toolName: call.name,
-        content: `Error: unknown tool "${call.name}"`,
-        ts: Date.now(),
-      };
-    }
-
-    let args: unknown;
-    try {
-      args = JSON.parse(call.arguments || "{}");
-    } catch {
-      args = {};
-    }
-    opts.onToolStart?.(call.name, args);
-
-    const parsed = (tool.schema as ZodType).safeParse(args);
-    if (!parsed.success) {
-      emitTelemetry({ type: "tool.call", tool: call.name, ok: false, durMs: 0 });
-      const message = `Error: invalid arguments — ${parsed.error.message}`;
-      opts.onToolEnd?.(call.name, { ok: false, content: message, errorCode: "TOOL_DENIED" });
-      return {
-        role: "tool",
-        toolName: call.name,
-        content: message,
-        ts: Date.now(),
-      };
-    }
-
-    // PreToolUse hook: a `block` outcome short-circuits.
-    if (ctx.hooks?.emit) {
-      try {
-        const pre = await ctx.hooks.emit("PreToolUse", {
-          toolName: call.name,
-          toolArgs: parsed.data,
-        });
-        if (pre.type === "block") {
-          emitTelemetry({ type: "tool.call", tool: call.name, ok: false, durMs: 0 });
-          const message = `Blocked by PreToolUse hook: ${pre.reason}`;
-          opts.onToolEnd?.(call.name, {
-            ok: false,
-            content: message,
-            errorCode: "TOOL_DENIED",
-          });
-          return {
-            role: "tool",
-            toolName: call.name,
-            content: message,
-            ts: Date.now(),
-          };
-        }
-      } catch (err) {
-        logger.warn("PreToolUse hook threw", {
-          tool: call.name,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
-    // 6-layer permission engine.
-    const decision = await hasPermission(tool, parsed.data, ctx, permState);
-    if (decision.outcome !== "allow") {
-      emitTelemetry({ type: "tool.call", tool: call.name, ok: false, durMs: 0 });
-      if (ctx.hooks?.emit && decision.outcome === "deny") {
-        try {
-          await ctx.hooks.emit("PermissionDenied", {
-            toolName: call.name,
-            toolArgs: parsed.data,
-            error: decision.reason,
-          });
-        } catch { /* swallowed inside emit; defensive */ }
-      }
-      const message =
-        decision.outcome === "deny"
-          ? `Permission denied: ${decision.reason}`
-          : `Permission pending (ask): ${decision.reason}`;
-      opts.onToolEnd?.(call.name, {
-        ok: false,
-        content: message,
-        errorCode: "TOOL_DENIED",
-      });
-      return {
-        role: "tool",
-        toolName: call.name,
-        content: message,
-        ts: Date.now(),
-      };
-    }
-
-    const startedAt = Date.now();
-    let ok = true;
-    let output: string;
-    let toolResult: ToolResult;
-    try {
-      const raw = await this.invokeTool(tool, parsed.data, ctx, cancelGraceMs);
-      if (typeof raw === "string") {
-        output = raw;
-        toolResult = { ok: true, content: raw };
-      } else {
-        ok = raw.ok;
-        output = raw.content;
-        toolResult = raw;
-      }
-    } catch (err) {
-      ok = false;
-      output = `Error: ${err instanceof Error ? err.message : String(err)}`;
-      toolResult = { ok: false, content: output, errorCode: "INTERNAL" };
-    }
-    emitTelemetry({
-      type: "tool.call",
-      tool: call.name,
-      ok,
-      durMs: Date.now() - startedAt,
-    });
-
-    if (ctx.hooks?.emit) {
-      try {
-        if (ok) {
-          await ctx.hooks.emit("PostToolUse", {
-            toolName: call.name,
-            toolArgs: parsed.data,
-            result: output,
-          });
-        } else {
-          await ctx.hooks.emit("PostToolUseFailure", {
-            toolName: call.name,
-            toolArgs: parsed.data,
-            error: output,
-          });
-        }
-      } catch (err) {
-        logger.warn("PostToolUse hook threw", {
-          tool: call.name,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
-    opts.onToolEnd?.(call.name, toolResult);
-    return {
-      role: "tool",
-      toolName: call.name,
-      content: output,
-      ts: Date.now(),
-    };
-  }
-
-  /**
-   * Invoke the tool with a soft cancel-grace window: if the abort signal
-   * fires while the tool is running, we wait at most `cancelGraceMs` for
-   * it to return on its own (most v2 tools observe `ctx.abortSignal`),
-   * then surface a synthesized "cancelled" result. We never force-kill
-   * the JS task — any kill semantics live inside the tool (e.g. the bash
-   * tool's killTree).
-   */
-  private async invokeTool(
-    tool: Tool,
-    args: unknown,
-    ctx: ToolContext,
-    cancelGraceMs: number,
-  ): Promise<string | ToolResult> {
-    const exec = Promise.resolve(tool.run(args, ctx));
-    if (!ctx.abortSignal) return exec;
-
-    return await new Promise<string | ToolResult>((resolve, reject) => {
-      let settled = false;
-      const settle = (cb: () => void): void => {
-        if (settled) return;
-        settled = true;
-        cb();
-      };
-      const onAbort = (): void => {
-        // Give the tool `cancelGraceMs` to return; otherwise return a
-        // structured cancellation result. Don't reject — callers expect a
-        // ToolResult so the message list stays consistent.
-        const t = setTimeout(() => {
-          settle(() =>
-            resolve({
-              ok: false,
-              content: "Tool cancelled by user (timed out waiting for graceful exit).",
-              errorCode: "INTERNAL",
-            }),
-          );
-        }, cancelGraceMs);
-        // Race: if the tool *does* finish during the grace window, the
-        // exec.then below will settle first.
-        exec.finally(() => clearTimeout(t));
-      };
-      if (ctx.abortSignal.aborted) onAbort();
-      else ctx.abortSignal.addEventListener("abort", onAbort, { once: true });
-      exec.then(
-        (v) => settle(() => resolve(v)),
-        (e) => settle(() => reject(e)),
-      );
-    });
   }
 }
 

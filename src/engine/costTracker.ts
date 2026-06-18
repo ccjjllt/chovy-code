@@ -19,6 +19,7 @@
 
 import { logger } from "../logger/index.js";
 import { emitTelemetry } from "../telemetry/index.js";
+import { CAPS } from "../providers/capabilities.js";
 import type { ProviderId } from "../types/provider.js";
 
 export interface TokenUsage {
@@ -59,10 +60,13 @@ export interface CostTotals {
 }
 
 // ---------------------------------------------------------------------------
-// Default price book — sourced from public pricing as of 2026-06; step-17
-// will hoist this into `providers/capabilities.ts` so the engine reads
-// from a single source of truth. Values here are conservative defaults
-// used until that PCM lands; missing models fall back to provider default.
+// Default price book.
+//
+// Per-model overrides are sourced from public pricing as of 2026-06; values
+// here are conservative defaults for popular SKUs each provider ships. When
+// the model isn't in this table, we fall back to `PROVIDER_DEFAULTS` (which
+// derives **structurally** from `providers/capabilities.ts` — PCM is the
+// single source of truth per AGENTS.md §17 / step-17 §8).
 // ---------------------------------------------------------------------------
 const DEFAULT_PRICES: Record<string, ModelPrice> = {
   // OpenAI
@@ -94,15 +98,29 @@ const DEFAULT_PRICES: Record<string, ModelPrice> = {
   "abab6.5s-chat": { inputPerMTok: 0.28, outputPerMTok: 0.28 },
 };
 
-const PROVIDER_DEFAULTS: Record<ProviderId, ModelPrice> = {
-  openai: { inputPerMTok: 0.5, outputPerMTok: 1.5 },
-  anthropic: { inputPerMTok: 3, outputPerMTok: 15 },
-  gemini: { inputPerMTok: 1.25, outputPerMTok: 5 },
-  deepseek: { inputPerMTok: 0.27, outputPerMTok: 1.1 },
-  minimax: { inputPerMTok: 0.28, outputPerMTok: 0.28 },
-  glm: { inputPerMTok: 0.7, outputPerMTok: 2.2 },
-  kimi: { inputPerMTok: 1.7, outputPerMTok: 1.7 },
-};
+/**
+ * Provider-level fallback price table — *derived from PCM* so a price
+ * change in `providers/capabilities.ts` automatically ripples here. This
+ * cements the "PCM is single source of truth" invariant promised by
+ * step-17 §8 / AGENTS.md §17 (no more silent drift between PCM and the
+ * cost tracker's hand-rolled defaults).
+ */
+const PROVIDER_DEFAULTS: Record<ProviderId, ModelPrice> = (() => {
+  const out = {} as Record<ProviderId, ModelPrice>;
+  for (const [id, cap] of Object.entries(CAPS) as Array<[ProviderId, (typeof CAPS)[ProviderId]]>) {
+    out[id] = {
+      inputPerMTok: cap.pricing.in,
+      outputPerMTok: cap.pricing.out,
+      ...(cap.pricing.cacheRead !== undefined
+        ? { cacheReadPerMTok: cap.pricing.cacheRead }
+        : {}),
+      ...(cap.pricing.cacheWrite !== undefined
+        ? { cacheWritePerMTok: cap.pricing.cacheWrite }
+        : {}),
+    };
+  }
+  return out;
+})();
 
 // ---------------------------------------------------------------------------
 // Public class

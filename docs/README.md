@@ -9,37 +9,36 @@
 
 ---
 
-## 0. 项目当前状态（Phase A-C 已完成并复验）
+## 0. 项目当前状态（Phase A-D 已完成并复验）
 
 ```
 chovy-code/
-├── bin/chovy.js               # 已构建的 CLI 入口（自动产物）
+├── bin/chovy.js               # 已构建的 CLI 入口（自动产物，700.9 KB）
 ├── docs/complete/             # 各 step / phase 验收报告
 ├── package.json               # Bun + React 18 + Ink 5 + Zod 3 + Commander 12
 ├── scripts/build.ts           # bun.build 打包脚本 + smoke 脚本
 └── src/
     ├── index.ts               # public barrel
     ├── version.ts
-    ├── agent/
-    │   ├── agent.ts           # 已实现最小 agent loop（completion → toolcall → repeat）
-    │   └── index.ts
+    ├── agent/                 # runAgent / runQuery 兼容 shim → QueryEngine
+    ├── engine/                # QueryEngine + costTracker + streamHandler + messageNormalize + toolExecutor
+    ├── prompts/               # 5 层 system prompt + boundary + PSF
     ├── cli/
     │   ├── index.tsx          # commander 入口
-    │   └── components/        # AgentRepl + StatusLine
+    │   └── components/        # AgentRepl + StatusLine + HeaderBar + MessageList
     ├── config/                # zod 校验的 env 配置
     ├── logger/                # leveled logger
-    ├── providers/             # registry + openai 参考实现 + 6 个 scaffold
+    ├── providers/             # 7 真实 provider + PCM + 通用 SSE + toolFormat
     ├── tools/                 # Tool v2 registry + ATP allocator + fs / exec / web / meta tools
     ├── harness/               # permissions / hooks / sandbox
     └── types/                 # ChatMessage / Tool / Provider 等契约
 ```
 
-**已完成并复验**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop 与流式 UI；
-Phase A（step-01–05）Foundation、Phase B（step-06–11）Tool System v2、Phase C（step-12–14）Harness。
-已具备 Tool Protocol v2、ATP 分配器、fs/exec/web/meta 9 个核心工具、权限引擎、Hook 引擎、文件系统/命令沙箱。
-**未实现**：system prompt 分层、QueryEngine、真实多 provider 网络接线、子智能体运行时、记忆/checkpoint、目标循环、上下文管理、技能图（对应 Phase D–I）。
+**已完成并复验**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（ATP 描述 + 5 层 prompt + 6 层权限 + 12 hook 事件 + 流式 + 成本 + 取消）、5 层 system prompt 分层 + PSF、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵、通用 SSE 解析、工具格式适配（含 MiniMax json-mode 降级）。
+Phase A（step-01–05）Foundation、Phase B（step-06–11）Tool System v2、Phase C（step-12–14）Harness、Phase D（step-15–17）Agent Core 全部通过复验。
+**未实现**：子智能体运行时、SwarmR、Judge、记忆/checkpoint、目标循环、上下文管理、技能图（对应 Phase E–I）。
 
-最新 A-C 复验报告见 [`complete/phase-a-c-acceptance.md`](./complete/phase-a-c-acceptance.md)。
+最新 A-D 复验报告见 [`complete/phase-a-d-acceptance.md`](./complete/phase-a-d-acceptance.md)；A-C 旧报告保留在 [`complete/phase-a-c-acceptance.md`](./complete/phase-a-c-acceptance.md)。
 
 ---
 
