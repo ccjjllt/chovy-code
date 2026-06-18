@@ -7,12 +7,16 @@ import type { PermissionMode } from "../../config/index.js";
  * piece by later steps:
  *   - costUSD                   ← step-16 (costTracker)
  *   - ctxUsedTokens / ctxTotal  ← step-27 (context monitor)
+ *   - pressureLevel             ← step-27 (color hint when above soft/hard)
  * Until then, callers can safely pass zeros — the header just renders 0%/$0.
  */
 export interface BudgetSnapshot {
   costUSD: number;
   ctxUsedTokens: number;
   ctxTotalTokens: number;
+  /** SCW pressure hint (step-27). Drives the ctx-% color: fresh=dim,
+   *  soft=yellow, hard=red. Omit for the legacy dim look. */
+  pressureLevel?: "fresh" | "soft" | "hard";
 }
 
 /** Optional swarm summary for the header's right side (step-22). When
@@ -48,6 +52,13 @@ const MODE_LABEL: Record<PermissionMode, string> = {
   bypassPermissions: "bypass!",
 };
 
+/** SCW pressure → ctx label color (step-27). */
+const PRESSURE_COLOR: Record<NonNullable<BudgetSnapshot["pressureLevel"]>, string | undefined> = {
+  fresh: undefined, // dim default
+  soft: "yellow",
+  hard: "red",
+};
+
 /**
  * Top-of-screen status bar: shows the current permission mode (color-coded),
  * the active provider/model, and a budget summary. Everything else in the
@@ -63,6 +74,14 @@ export function HeaderBar({ mode, provider, model, budget, swarm }: Props): Reac
     ? `  swarm: ${swarm.running}R/${swarm.done}D`
     : "";
 
+  // SCW: when above soft, paint the `ctx NN%` chip yellow/red so users see
+  // the warning without checking the system prompt.
+  const pressureColor = budget.pressureLevel
+    ? PRESSURE_COLOR[budget.pressureLevel]
+    : undefined;
+  const ctxBold = budget.pressureLevel === "hard";
+  const tail = `  $${cost}${swarmChip}`;
+
   return (
     <Box
       justifyContent="space-between"
@@ -75,7 +94,12 @@ export function HeaderBar({ mode, provider, model, budget, swarm }: Props): Reac
         <Text dimColor>{`  ${provider}/${model}`}</Text>
       </Box>
       <Box>
-        <Text dimColor>{`ctx ${ratio}%  $${cost}${swarmChip}`}</Text>
+        {pressureColor ? (
+          <Text color={pressureColor} bold={ctxBold}>{`ctx ${ratio}%`}</Text>
+        ) : (
+          <Text dimColor>{`ctx ${ratio}%`}</Text>
+        )}
+        <Text dimColor>{tail}</Text>
       </Box>
     </Box>
   );

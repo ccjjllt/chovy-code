@@ -104,6 +104,56 @@ export function contextBudgetSection(b?: ContextBudgetSnippet): string {
   return `${head}\nbudgets: ${allocs}`;
 }
 
+/**
+ * SCW pressure block (step-27 §"提示主 agent 段").
+ *
+ * Rendered when the monitor crosses the soft / hard threshold. We use an
+ * XML-style block (matches the spec verbatim) rather than markdown so the
+ * model can grep for `<context-pressure>` and respond uniformly across
+ * providers. `'fresh'` renders nothing — keeps the dynamic suffix stable
+ * below the soft threshold (no PSF churn for healthy conversations).
+ */
+export interface PressureSnippet {
+  level: "fresh" | "soft" | "hard";
+  usedPct: number;
+  remainingTokens: number;
+  /** Whether a checkpoint was just written; controls the closing line. */
+  checkpointWritten: boolean;
+}
+
+export function pressureSection(p?: PressureSnippet): string {
+  if (!p || p.level === "fresh") return "";
+  const used = Math.max(0, Math.min(100, Math.round(p.usedPct)));
+  const remaining = Math.max(0, Math.floor(p.remainingTokens));
+  if (p.level === "soft") {
+    const ckpt = p.checkpointWritten
+      ? "checkpoint 已自动保存。"
+      : "若你正在做长任务，主动写 progress.md / 触发 /checkpoint。";
+    return [
+      `<context-pressure level="soft" used="${used}%" remaining_tokens="${remaining}">`,
+      `你的上下文使用接近 75%。请尝试：`,
+      `- 精炼回答；`,
+      `- 完成手头的子步骤后通过 TodoWrite 收尾；`,
+      `- 调用 dispatch 时降低 prompts 数量。`,
+      ckpt,
+      `</context-pressure>`,
+    ].join("\n");
+  }
+  // hard
+  const ckpt = p.checkpointWritten
+    ? "checkpoint 已自动保存；step-28 重建协议会接管下一轮。"
+    : "立即触发 /checkpoint now，并避免再开新长任务。";
+  return [
+    `<context-pressure level="hard" used="${used}%" remaining_tokens="${remaining}">`,
+    `上下文使用已超过 90%——接近模型硬上限。请立刻：`,
+    `- 用一句话总结当前进展并调用 TodoWrite 收尾；`,
+    `- 不要再开启新的子任务 / dispatch；`,
+    `- 让用户看到要点再继续。`,
+    ckpt,
+    `</context-pressure>`,
+  ].join("\n");
+}
+
 /** Filter out empty sections + glue with blank lines. */
 export function joinSections(sections: Array<string | undefined>): string {
   return sections.filter((s): s is string => Boolean(s && s.trim())).join("\n\n");

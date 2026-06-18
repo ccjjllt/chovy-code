@@ -18,6 +18,8 @@
  */
 
 import { QueryEngine, setSpawnFnBuilder, setDispatchFnBuilder, type QueryEngineDeps, type QueryRunOptions, type QueryRunResult } from "../engine/index.js";
+import type { TokenUsage } from "../engine/index.js";
+import type { MonitorState } from "../context/index.js";
 import { getProvider } from "../providers/index.js";
 import { logger } from "../logger/index.js";
 import { getSubAgentPool } from "./pool.js";
@@ -114,6 +116,18 @@ export interface AgentOptions {
   toolDenylist?: string[];
   /** Token budget for ATP allocator. */
   toolBudgetTokens?: number;
+  /**
+   * step-27: per-round SCW snapshot. Forwarded through to QueryEngine
+   * (`QueryRunOptions.onContextSnapshot`). REPL HeaderBar uses this for
+   * the live ctx % + soft/hard color.
+   */
+  onContextSnapshot?: (state: MonitorState) => void;
+  /**
+   * step-16/27: per-round token usage forwarded from QueryEngine. The
+   * REPL accumulates these into `costUSD` for the HeaderBar; headless
+   * callers can ignore.
+   */
+  onUsage?: (usage: TokenUsage) => void;
 }
 
 /**
@@ -192,6 +206,8 @@ function buildRunOptions(
     budgetUSD: opts.budgetUSD,
     onHookMessage: opts.onHookMessage,
     onToken: opts.onToken,
+    onContextSnapshot: opts.onContextSnapshot,
+    onUsage: opts.onUsage,
     onToolStart: opts.onToolCall
       ? (name: string, args: unknown) => opts.onToolCall!(name, args)
       : undefined,

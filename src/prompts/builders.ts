@@ -34,9 +34,11 @@ import {
   memorySection,
   modelSection,
   notesSection,
+  pressureSection,
   skillsSection,
   type ContextBudgetSnippet,
   type CwdSnippet,
+  type PressureSnippet,
 } from "./snippets.js";
 import { _fnv1aForTesting as fnv1a } from "./fingerprint.js";
 
@@ -62,6 +64,10 @@ export interface SystemContext {
   notesText?: string;
   loadedSkills?: string[];
   contextBudget?: ContextBudgetSnippet;
+  /** SCW pressure block (step-27). Renders nothing when omitted or
+   *  `level === 'fresh'`; the engine fills it after monitor.inspect()
+   *  flips the level. */
+  pressure?: PressureSnippet;
   /** Permission mode — used to inject the plan-mode note into static. */
   planMode?: boolean;
 }
@@ -154,6 +160,7 @@ export function buildEffectiveSystemPrompt(opts: BuildOptions): EffectivePrompt 
     omitMemory ? "" : notesSection(opts.context.notesText),
     skillsSection(opts.context.loadedSkills),
     contextBudgetSection(opts.context.contextBudget),
+    pressureSection(opts.context.pressure),
   ]);
   if (dynamicText) {
     segments.push({ name: "dynamic", text: dynamicText, from: "default" });

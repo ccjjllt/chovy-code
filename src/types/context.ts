@@ -37,3 +37,28 @@ export interface ContextSnapshot {
   /** ISO timestamp of last checkpoint write, if any. */
   lastCheckpointAt?: string;
 }
+
+/**
+ * Per-round pressure hint injected into the dynamic suffix of the system
+ * prompt when the SCW monitor (step-27) detects the conversation crossed
+ * the soft or hard threshold. The model sees this as a `<context-pressure>`
+ * XML block (`prompts/snippets.ts:pressureSection`) and should respond by
+ * tightening its working set before the next round.
+ *
+ * Frozen at step-27. Extensions must add optional fields only.
+ */
+export interface ContextPressure {
+  /** Pressure level — `'fresh'` is allowed for round-stable plumbing
+   *  but `pressureSection` renders nothing for it (so the prompt stays
+   *  unchanged below soft). */
+  level: "fresh" | "soft" | "hard";
+  /** Used percentage relative to the provider's full context window
+   *  (0–100, integer). */
+  usedPct: number;
+  /** Remaining input headroom in tokens (post-reserve). */
+  remainingTokens: number;
+  /** True iff the monitor fired a `coordinator.maybeCheckpoint('token-soft')`
+   *  on the round that pushed us into this pressure level. Used by the
+   *  prompt block to tell the model "checkpoint already saved". */
+  checkpointWritten: boolean;
+}

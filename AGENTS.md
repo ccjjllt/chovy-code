@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）、Phase G step-24（Memory Store：bun:sqlite + FTS5 + 4 类记忆）+ step-26（Checkpoint Writer：协调器 + 路径沙箱 + 7 段模板 + fallback）全部完成构建并通过复验；下一步进入 step-25（Memory Injection）+ step-27/28（SCW）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`；Phase G step-24 验收报告见 `docs/complete/step-24-acceptance.md`；step-26 验收报告见 `docs/complete/step-26-acceptance.md`；**Phase A-G 综合复验报告见 `docs/complete/phase-a-g-acceptance.md`**（重点复验 Phase G，修复 step-24↔step-26 bridge smoke / `nul` 残留 / step-26 文档准确性 3 项）。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）、Phase G step-24（Memory Store：bun:sqlite + FTS5 + 4 类记忆）+ step-26（Checkpoint Writer：协调器 + 路径沙箱 + 7 段模板 + fallback）+ Phase H step-27（Context Monitor：自适应阈值 + ContextMonitor + `<context-pressure>` 注入 + soft 自动 checkpoint + HeaderBar 实时 ctx % 颜色 + `CHOVY_CTX_DISABLE` 开关）全部完成构建并通过复验；下一步进入 step-25（Memory Injection）+ step-28（Context Rebuild）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`；Phase G step-24 验收报告见 `docs/complete/step-24-acceptance.md`；step-26 验收报告见 `docs/complete/step-26-acceptance.md`；**Phase A-G 综合复验报告见 `docs/complete/phase-a-g-acceptance.md`**（重点复验 Phase G，修复 step-24↔step-26 bridge smoke / `nul` 残留 / step-26 文档准确性 3 项）；**Phase H step-27 验收报告见 `docs/complete/step-27-acceptance.md`**（48 用例 PASS + smoke-step23/24/26 回归全过 = 184 PASS / 0 FAIL）。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -64,9 +64,9 @@ chovy-code/
     └── types/                # provider / messages / tool / agent / memory 契约
 ```
 
-**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行 + 5 内置角色）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 自实现 p-limit 并发限流 + 全局预算 sticky-trip 熔断 + 进度/生命周期 bus）、Judge 聚合（4 schema + provider fallback 链 + tryFixJSON 五步修复 + ≤1 次自我修复 + 大 N 截断 + 取消独立 AC）、Ink UI 面板（SwarmPanel + AgentRow + AgentDetail + HotkeyBar + swarmStore + outputBuffer + Tab 焦点 + 16ms 节流）、`/goal` 长程任务循环（GoalState 5-state + JSON 持久化 + Loop-driven Stop + rubric/command/hybrid 收敛 + 死循环兜底 + checkpoint per-5-rounds + GoalPanel + 3-way Tab 焦点 + headless 退出码）、**TMT 存储底层（4 类记忆 schema 冻结 + bun:sqlite + FTS5 unicode61 + BM25/mixed ranker + InMemoryStore 降级 + frontmatter+bullets parser + 增量 sync mtime 缓存 + forceRebuild + memoryFile/notesFile/progressFile + memory.index telemetry + chovy mem list/show/search/rebuild/stats）**、**Checkpoint Writer（CheckpointCoordinator 30s/reason 防抖 + 路径沙箱 via ToolContext.agentRole + 7 段 markdown 模板 + ≤50 归档轮转 + 规则化 fallback + checkpoint.written telemetry + /checkpoint now|list slash + goal-loop per-5-rounds 触发 + 取消独立 AC）**。**Phase G 复验（`docs/complete/phase-a-g-acceptance.md`）闭合 step-24 ↔ step-26 bridge**：coordinator 写出的 `checkpoints/*.md` 经 `syncFromFiles` file-primary 路径落 MemoryStore（`layer=checkpoint`）+ FTS 可检索，已由 smoke-step26 §13 覆盖。
-各 Phase 的详细产物与验收结论见 `docs/complete/` 下对应报告；本文不逐步罗列。
-**未实现**：跨会话注入（step-25，Phase G 第三步，明确留后——bridge 已就绪可直接 `syncProject`+`store.search` 接入）、上下文管理 SCW（step-27/28）、技能图 CSG（step-29）、端到端集成（step-30）。
+**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行 + 5 内置角色）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 自实现 p-limit 并发限流 + 全局预算 sticky-trip 熔断 + 进度/生命周期 bus）、Judge 聚合（4 schema + provider fallback 链 + tryFixJSON 五步修复 + ≤1 次自我修复 + 大 N 截断 + 取消独立 AC）、Ink UI 面板（SwarmPanel + AgentRow + AgentDetail + HotkeyBar + swarmStore + outputBuffer + Tab 焦点 + 16ms 节流）、`/goal` 长程任务循环（GoalState 5-state + JSON 持久化 + Loop-driven Stop + rubric/command/hybrid 收敛 + 死循环兜底 + checkpoint per-5-rounds + GoalPanel + 3-way Tab 焦点 + headless 退出码）、**TMT 存储底层（4 类记忆 schema 冻结 + bun:sqlite + FTS5 unicode61 + BM25/mixed ranker + InMemoryStore 降级 + frontmatter+bullets parser + 增量 sync mtime 缓存 + forceRebuild + memoryFile/notesFile/progressFile + memory.index telemetry + chovy mem list/show/search/rebuild/stats）**、**Checkpoint Writer（CheckpointCoordinator 30s/reason 防抖 + 路径沙箱 via ToolContext.agentRole + 7 段 markdown 模板 + ≤50 归档轮转 + 规则化 fallback + checkpoint.written telemetry + /checkpoint now|list slash + goal-loop per-5-rounds 触发 + 取消独立 AC）**、**Context Monitor（自适应阈值 thresholds() PCM 单源 + 4chars/token×1.2 安全估算 + ContextMonitor 3-state fresh/soft/hard + 上转换 sticky max-level + soft 自动 maybeCheckpoint('token-soft') + `<context-pressure level=…>` system prompt 注入 + HeaderBar 实时 ctx % + soft黄/hard红着色 + onContextSnapshot/onUsage UI 回调 + CHOVY_CTX_DISABLE 开关 + context.threshold telemetry 单源）**。**Phase G 复验（`docs/complete/phase-a-g-acceptance.md`）闭合 step-24 ↔ step-26 bridge**：coordinator 写出的 `checkpoints/*.md` 经 `syncFromFiles` file-primary 路径落 MemoryStore（`layer=checkpoint`）+ FTS 可检索，已由 smoke-step26 §13 覆盖。
+
+**未实现**：跨会话注入（step-25，Phase G 第三步，明确留后——bridge 已就绪可直接 `syncProject`+`store.search` 接入）、上下文重建 step-28（hard 阈值后的 messages 截断 + 预算化 memory/checkpoint/notes 注入；step-27 已留 hook：queryEngine 在 hard 时 `logger.warn` 一次，rebuild 接入只需替换该分支）、技能图 CSG（step-29）、端到端集成（step-30）。
 
 ---
 
@@ -630,7 +630,7 @@ chovy log tail                   # 看 telemetry
 **`subagent_type` enum 仍不含 checkpoint-writer**：`tools/meta/agent.ts` zod enum 只列 Explore/Plan/Verify/Critic；checkpoint-writer 由 coordinator / SCW 直接 `pool.spawn({ role: "checkpoint-writer" })` 调用，不暴露给主 agent（与 §18 step-19 不变量一致）。
 
 **依赖图无环**：
-- `src/memory/checkpointWriter.ts` import `agent/index`（`getSubAgentPool` + 类型）+ `fs`（`safeFs` / `checkpointDir` / `isWithin`）+ `harness/hooks`（类型）+ `telemetry`（emit）+ `types/agent`；**不**反向被 engine / providers / harness / goals 依赖。
+- `src/memory/checkpointWriter.ts` import `agent/pool` (`getSubAgentPool` + 类型，**leaf reach**，不经 `agent/index` barrel —— barrel 重导出 `runAgent` 顶层 `setSpawnFnBuilder(...)` 会闭环 engine→memory→agent→engine 触发 TDZ on registry，与 §18 `swarm/pool → agent/pool` 同模式) + `fs`（`safeFs` / `checkpointDir` / `isWithin`）+ `harness/hooks`（类型）+ `telemetry`（emit）+ `types/agent`；**不**反向被 engine / providers / harness / goals 依赖。
 - `src/goals/checkpoint.ts` → `memory/checkpointWriter`（新增依赖，单向）；`goals/iterations.ts` → `goals/checkpoint.ts`（既有）。goals 仍是叶子。
 - `src/cli/slashCommands/checkpoint.ts` → 仅 `slashCommands` 类型（UI-only，与 `cli/slashCommands/goal.ts` 同模式）；`src/cli/repl.tsx` → `memory/checkpointWriter`（通过 `checkpointRuntime` 闭包注入，类似 `goalRuntime`）。
 - `src/tools/fs/write.ts` / `edit.ts` → `fs`（既有，新增 `checkpointDir` / `isWithin` import）+ 读 `ctx.agentRole`（types/tool.ts）；**不**引入新模块依赖。
@@ -641,5 +641,60 @@ chovy log tail                   # 看 telemetry
 **checkpoint → MemoryStore bridge（Phase G 复验 G1 闭合）**：
 - coordinator 写出的 `checkpoints/*.md` 经 step-24 `syncFromFiles.collectSourceFiles` 当 `layer=checkpoint` 源文件解析 + upsert 落 MemoryStore —— **file-primary sync 路径已落地索引**，coordinator **不**需要在写盘后再做一次 direct `upsertFromCheckpointFile`（文件是主源、store 是派生索引，step-24 §文件 ↔ DB 同步）。coordinator 中保留的 `NOTE` 注释指 direct-call 仅是省一次 mtime 探测的微优化，非功能缺口。
 - **bridge 必须有 smoke 覆盖**：`scripts/smoke-step26.ts §13`（coordinator 写 latest.md → `syncProject` → FTS search 命中 + `layer==='checkpoint'`）。后续改 `syncFromFiles.collectSourceFiles` 的 checkpoint 分支或 `parser` 的 checkpoint 路径时，该 smoke 是回归门，**不得删除或弱化**。
+
+## 22. Phase H 不变量（Context Monitor — SCW 第一步）
+
+> Phase H step-27 产物/验收见 `docs/complete/step-27-acceptance.md`。本节固化 step-27 跨步骤生效的不变量；后续 step-28（rebuild）/ step-29（CSG）扩展对应模块时必须遵守。
+
+**单源规约**（接 §16/§17/§18/§19/§20/§21 同模式）：
+- `ContextLevel` / `MonitorState` / `ContextThresholds` → `src/context/monitor.ts` + `src/context/thresholds.ts`（step-27 冻结，B6 屏障预留）；`src/context/index.ts` 仅 re-export。后续 step-28/29 用 `import type` 复用，**禁止**重声明 union。
+- `ContextPressure` → `src/types/context.ts`（step-27 冻结）；`src/prompts/snippets.ts:PressureSnippet` 是 prompt 渲染入参的别名（结构相同），不重声明 union。
+- **PCM 单源**：`thresholds(model, providerId, cfg, env)` 直接读 `CAPS[providerId].contextWindow`（step-17 PCM 单源，AGENTS.md §17）。新增 provider 的 ctx window 在 `src/providers/capabilities.ts` 一处声明即可，monitor 自动 pick。
+- **`context.threshold` telemetry 单源** = `src/context/monitor.ts:emitTelemetry`（在 `inspect()` 内的 transition 分支）。queryEngine / coordinator / REPL / HeaderBar 全部为消费方，**不**直发；与 §17 `tool.call`、§17 `agent.cost`、§18 `swarm.dispatch`、§20 `memory.index`、§21 `checkpoint.written` 同模式。
+- **token estimator 单源** = `src/context/tokenizer.ts:defaultEstimator`；后续 tiktoken-light / Anthropic count-tokens API 必须经 `pickEstimator(family)` 注册，**不**另写并行实现。
+
+**冻结接口**（字段名不改，扩展只追加可选字段）：
+- `MonitorState`（step-27 冻结，B6 预留）：6 字段（`total / effective / thresholds / level / transitioned / checkpointTriggered`）；扩展**追加**字段不替换既有。
+- `ContextThresholds`（step-27 冻结）：5 字段（`ctxWindow / soft / hard / reserve / effectiveWindow`）；`effectiveWindow = ctxWindow - reserve` 派生且 reserve clipped at 50% ctxWindow。
+- `ContextMonitor` 接口（step-27 冻结）：`thresholds` (readonly) / `level` (readonly) / `inspect(messages, systemBytes)` / `onLevelChange(cb)` / `_resetForTesting()`；扩展**追加**方法不替换签名。
+- `QueryRunOptions.onContextSnapshot?` / `AgentOptions.onContextSnapshot?` / `AgentOptions.onUsage?`（step-27 追加，§16 frozen-extension）：UI 回调 best-effort，异常 swallow + warn，**绝不**让运行失败（与 §18 `onToken/onToolStart/onUsage` 回调 best-effort 同模式）。
+- `BudgetSnapshot.pressureLevel?`（step-27 追加，UI-only）：HeaderBar 着色用，仅 `'fresh'|'soft'|'hard'`；其它字段不动。
+- `SystemContext.pressure?: PressureSnippet`（step-27 追加，prompt builders 冻结字段）：仅在 dynamic 半区，**不**影响 `staticHash`（boundary 不变）。
+
+**上转换 sticky max-level 不变量**：
+- `isUpwardTransition(prev, next)` 用 `{fresh:0, soft:1, hard:2}` 数值序判定。下转换（hard→soft / soft→fresh）**不**触发 telemetry / checkpoint，避免临时消息裁剪导致 soft 反复 fire。
+- step-28 rebuild 后由 monitor 重置（`_resetForTesting()`）或 queryEngine 新建实例处理 level 回退，step-27 不主动降级。
+
+**取消独立 AC（AGENTS.md §9 代码化）**：
+- monitor 持 `parentSignal` 仅 *观察*；从不直接 forward 给 coordinator 的 spawn signal。
+- `maybeCheckpoint` 触发用 fire-and-forget `void coord.maybeCheckpoint(...)`，coordinator 内部本地 AC 包装 parentSignal（与 §21 step-26 §11 不变量一致）。
+- pre-aborted parentSignal → `inspect()` 同步返回 state，**不抛**；checkpoint 触发由 coordinator 自身处理 abort 短路。
+
+**checkpoint 触发不变量**：
+- 上转换 fresh→soft 与 soft→hard 都用 reason `'token-soft'`（step-26 union 当前不含 `'token-hard'`）；coordinator 30s per-reason debounce 自然兜底快速 soft→hard 翻转。
+- 单次 `inspect()` 至多触发一次 checkpoint（与 telemetry emit 数量一致）；`MonitorState.checkpointTriggered` 反映本次 *尝试*，coordinator 实际是否写盘由它自己的 debounce + 写失败兜底决定。
+
+**`CHOVY_CTX_DISABLE=1` 退化路径**：
+- `createContextMonitorIfEnabled(deps)` 检查 env，返回 `null`；queryEngine 主循环 `if (ctxMonitor) { ... }` 守卫。无 monitor 时不发 telemetry / 不触发 checkpoint / 不注入 pressure 段，但 engine 主循环正常继续；`<Context budget>` 段在 `pendingBudget=undefined` 时也不渲染。
+- 与 `CHOVY_NO_SWARM_PANEL=1` 同模式（运行时切换，纯 process.env 读，不进 ChovyConfig schema）。
+
+**hard 不在 step-27 自我 rebuild**：
+- spec 写 hard → "进入 step-28 的 rebuild 流程"。本步 monitor 在 hard 时仅做：emit telemetry + 注入更紧迫 pressure block + 触发 token-soft checkpoint + queryEngine `logger.warn` 一次。**不**主循环早退（rebuild 由 step-28 控制）+ **不**切换 reason 为 `'token-hard'`（step-26 union 当前不含；新增成员是 step-26 的事）。
+- step-28 接驳点：queryEngine 在 `level==='hard'` 分支替换 `logger.warn` 为 `await rebuildContext(...)`，再 `monitor._resetForTesting()` / 新建 monitor，使 level 回到 fresh。
+
+**queryEngine.ts ≤ 600 行（硬限）**：
+- 当前 600 行（恰至硬限）。SCW 适配独立到 `src/engine/contextHook.ts`（108 行：`createContextMonitorIfEnabled` / `pendingFromMonitorState` / `notifyContextSnapshot`），spawn/dispatch handle 构造独立到 `runHelpers.ts:buildSpawnHandles`。
+- 后续 step-28 rebuild 接入时**不要**把逻辑塞回 queryEngine.ts；继续抽 helper（rebuild 候选 → `engine/rebuildHook.ts`）或扩展 `contextHook.ts`。
+
+**依赖图无环**：
+- `src/context/*` 是叶子模块：可被 `src/engine/queryEngine.ts` / `src/engine/contextHook.ts` / 未来 `step-28 rebuilder` / `step-29 SCG` 引用，**不**反向 import `engine` / `providers` / `agent` / `swarm` / `goals`（与 §20 memory 同模式）。
+- `src/engine/contextHook.ts` import `src/context/index` + `src/prompts/index` 类型；queryEngine 只通过此模块接 monitor，避免 import 链膨胀。
+- **engine→memory→agent→engine 加载环已闭合**：step-27 把 `src/memory/checkpointWriter.ts` 的 `getSubAgentPool` import 从 `agent/index`（barrel）改到 `agent/pool`（leaf），切断 barrel 触发的 `runAgent.ts` 顶层 `setSpawnFnBuilder(...)` 在 registry 仍处 TDZ 时被调用的 race。这是与 §18 `swarm/pool → agent/pool` 同模式的 leaf-reach 纪律，**不得**回退。
+
+**`ContextBudget` 类型留 step-28**：
+- `src/types/context.ts` 已冻结 `ContextBudget`（5 bucket：memory/checkpoint/notes/skills/tail）；step-27 仅消费 `ContextBudgetSnippet`（render-only 子集，2 字段 used/total）。step-28 rebuilder 用 `ContextBudget` 做预算化裁剪，本步不实现。
+
+**`MIN_SOFT_RATIO = 0.5` 防御性下限**：
+- thresholds.ts 拒绝 `softRatio < 0.5` / `softRatio >= hardRatio` / `hardRatio > 0.99`，回退 cfg 默认 + warn。防 user 把 ratio 设成 `0.05` 之类导致每轮都 fire soft。如未来出现合法低 ratio 用例，可放宽下限到 0.1 或加 `CHOVY_CTX_ALLOW_LOW_RATIO=1` 后门，**不要**直接删除该下限。
 
 

@@ -37,9 +37,11 @@ export {
   notesSection,
   skillsSection,
   contextBudgetSection,
+  pressureSection,
   joinSections,
   type CwdSnippet,
   type ContextBudgetSnippet,
+  type PressureSnippet,
 } from "./snippets.js";
 
 export {

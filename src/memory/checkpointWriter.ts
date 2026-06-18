@@ -57,10 +57,15 @@ import {
   latestCheckpointFile,
   ensureProjectDirs,
 } from "../fs/index.js";
+// Reach the leaf `agent/pool.js` rather than the `agent/index` barrel: the
+// barrel re-exports `runAgent` whose top-level `setSpawnFnBuilder(...)`
+// call closes the engine → memory → agent → engine cycle (TDZ on the
+// registry's `let spawnFnBuilder`). Same DAG discipline as
+// `swarm/pool.ts → agent/pool.js` (AGENTS.md §18).
 import {
   getSubAgentPool,
   type SubAgentPool,
-} from "../agent/index.js";
+} from "../agent/pool.js";
 import type {
   ChatMessage,
   GoalHistoryEntry,

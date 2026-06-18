@@ -32,6 +32,7 @@ import {
 import { getCheckpointCoordinator } from "../memory/index.js";
 import { checkpointDir } from "../fs/paths.js";
 import { safeFs } from "../fs/safeFs.js";
+import { getCapability } from "../providers/capabilities.js";
 import type { GoalState } from "../types/index.js";
 
 interface Props {
@@ -73,8 +74,10 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   const [helpOpen, setHelpOpen] = useState(false);
   const [goalState, setGoalState] = useState<GoalState | null>(null);
   const [history, setHistory] = useState<string[]>([]);
-  // Budget is a placeholder until step-16/27 wire real numbers.
-  const [budget] = useState<BudgetSnapshot>({
+  // step-16/27: budget snapshot wired live by `runAgent`'s onUsage +
+  // onContextSnapshot callbacks. The HeaderBar reads these for the
+  // `ctx NN%` / `$X.XXXX` chip.
+  const [budget, setBudget] = useState<BudgetSnapshot>({
     costUSD: 0,
     ctxUsedTokens: 0,
     ctxTotalTokens: 0,
@@ -342,6 +345,10 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
 
     try {
       let buf = "";
+      // step-27: PCM-priced marginal-cost helper. Avoids re-importing the
+      // CostTracker just for the header chip — the real ledger lives
+      // inside the engine; this is cheap UI feedback only.
+      const pricing = getCapability(provider).pricing;
       const final = await runAgent(t, {
         provider,
         model,
@@ -356,6 +363,24 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
         onToolCall: (name) => {
           if (cancelledRef.current) return;
           setTool(name);
+        },
+        onContextSnapshot: (snap) => {
+          // Push live ctx % + pressure color into the HeaderBar.
+          setBudget((b) => ({
+            ...b,
+            ctxUsedTokens: snap.total,
+            ctxTotalTokens: snap.thresholds.ctxWindow,
+            pressureLevel: snap.level,
+          }));
+        },
+        onUsage: (usage) => {
+          // Marginal USD from this round; cumulative since REPL start.
+          const inUSD = (usage.in / 1_000_000) * pricing.in;
+          const outUSD = (usage.out / 1_000_000) * pricing.out;
+          const marginal = inUSD + outUSD;
+          if (marginal > 0) {
+            setBudget((b) => ({ ...b, costUSD: b.costUSD + marginal }));
+          }
         },
       });
       if (cancelledRef.current) {

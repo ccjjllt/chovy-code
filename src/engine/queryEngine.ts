@@ -47,6 +47,7 @@ import {
   computeShape,
   type BuildOptions,
   type EffectivePrompt,
+  type PressureSnippet,
 } from "../prompts/index.js";
 import {
   createPermissionEngineState,
@@ -59,7 +60,6 @@ import type {
   AgentRole,
   ChatMessage,
   ContextBudget,
-  ParentRuntimeCtx,
   ProviderId,
   SpawnFn,
   Tool,
@@ -67,11 +67,22 @@ import type {
   ToolResult,
   ToolSession,
 } from "../types/index.js";
+import type {
+  ContextMonitor,
+  MonitorState,
+} from "../context/index.js";
+import { getCheckpointCoordinator } from "../memory/checkpointWriter.js";
 import { CostTracker, type TokenUsage } from "./costTracker.js";
 import { normalizeForProvider, pruneOrphanToolMessages } from "./messageNormalize.js";
 import { runStream } from "./streamHandler.js";
 import { executeToolCall } from "./toolExecutor.js";
 import {
+  createContextMonitorIfEnabled,
+  notifyContextSnapshot,
+  pendingFromMonitorState,
+} from "./contextHook.js";
+import {
+  buildSpawnHandles,
   fillBuildOptions,
   makeAgentId,
   resolveToolPool,
@@ -138,6 +149,13 @@ export interface QueryRunOptions {
   onToolEnd?(name: string, result: ToolResult): void;
   onUsage?(usage: TokenUsage): void;
   onHookMessage?(message: string): void;
+  /**
+   * step-27: per-round SCW snapshot. Fires once per `monitor.inspect()`
+   * (i.e. once per provider call). Receivers (REPL HeaderBar) can read
+   * `state.total / state.thresholds.ctxWindow` for the live ctx %.
+   * Best-effort — exceptions are caught + warned.
+   */
+  onContextSnapshot?(state: MonitorState): void;
 
   // ToolContext extensions (CLI-supplied)
   askUser?: ToolContext["askUser"];
@@ -164,16 +182,15 @@ export interface QueryEngineDeps {
 
 // Sub-agent / SwarmR builder hooks (step-18 / step-20). Registration storage
 // lives in `runtimeRegistry.ts` (AGENTS.md §17 single-source); we re-export the
-// setters so the engine barrel keeps a stable public API.
+// setters so the engine barrel keeps a stable public API. The lookup side
+// (`getSpawnFnBuilder` / `getDispatchFnBuilder`) is consumed inside
+// `buildSpawnHandles` (`runHelpers.ts`) so the engine itself doesn't need
+// to import them.
 export {
   setSpawnFnBuilder,
   setDispatchFnBuilder,
   type SpawnFnBuilder,
   type DispatchFnBuilder,
-} from "./runtimeRegistry.js";
-import {
-  getSpawnFnBuilder,
-  getDispatchFnBuilder,
 } from "./runtimeRegistry.js";
 
 // ---------------------------------------------------------------------------
@@ -238,34 +255,20 @@ export class QueryEngine {
 
     const messages: ChatMessage[] = [...opts.messages];
 
-    // Sub-agent spawn factory (step-18). The builder closes over the
-    // engine's live `messages` array so the snapshot the child receives
-    // reflects what the parent has seen up to the moment of the call.
-    // Sub-agents themselves don't get a builder by default (avoiding
-    // unintentional recursion until SwarmR / step-20 lands).
-    let spawnFn: SpawnFn | undefined;
-    // SwarmR dispatch handle (step-20). Built from a registered
-    // `dispatchFnBuilder` (same registration pattern as `spawnFnBuilder`)
-    // so the engine never statically imports `swarm/router` — that would
-    // cycle (engine → swarm → agent → engine). Only the top-level `main`
-    // role gets a dispatch handle; a sub-agent dispatching would recurse
-    // through the pool, and step-20 leaves that opt-in to a later step.
-    let dispatchSwarm: ToolContext["dispatchSwarm"] | undefined;
-    const spawnBuilder = getSpawnFnBuilder();
-    const dispatchBuilder = getDispatchFnBuilder();
-    if (spawnBuilder && role === "main") {
-      const parentCtx: ParentRuntimeCtx = {
-        parentId: agentId,
-        parentRole: role,
-        parentProvider: opts.provider,
-        parentModel: model,
-        parentMode: permState.mode,
-        parentMessages: messages, // live ref — mutated as the run progresses
-        parentSignal: ac.signal,
-      };
-      spawnFn = spawnBuilder(parentCtx);
-      if (dispatchBuilder) dispatchSwarm = dispatchBuilder(parentCtx);
-    }
+    // Sub-agent spawn factory (step-18) + SwarmR dispatch (step-20). Only
+    // top-level `main` gets handles; helpers in `runHelpers.ts` bridge the
+    // registry (avoids engine → swarm → agent → engine cycle).
+    const handles = buildSpawnHandles({
+      role,
+      agentId,
+      provider: opts.provider,
+      model,
+      mode: permState.mode,
+      messages,
+      signal: ac.signal,
+    });
+    const spawnFn: SpawnFn | undefined = handles.spawn;
+    const dispatchSwarm: ToolContext["dispatchSwarm"] | undefined = handles.dispatch;
 
     // Build the runtime ToolContext once; round-level changes go through
     // `permState` / `hookEngine` not new ctx allocations.
@@ -302,10 +305,7 @@ export class QueryEngine {
       askUser: opts.askUser,
       isInteractive,
       // step-26: identify the agent's role to tools so they can do
-      // role-aware checks (e.g. checkpoint-writer's path sandbox in
-      // file_write / file_edit). The pool plumbs `handle.role` through
-      // QueryRunOptions.agentRole; legacy callers leave it undefined and
-      // the tool-side fallback treats that as "main".
+      // role-aware checks (e.g. checkpoint-writer's path sandbox).
       agentRole: role,
     };
 
@@ -317,8 +317,27 @@ export class QueryEngine {
     // Tool pool selection: callers may inject a custom subset (sub-agents do).
     const toolPool = resolveToolPool(opts);
 
-    // (messages array is allocated above so the spawnFn closure picks up
-    // the live reference — see the step-18 spawn wiring before `ctx`.)
+    // ── SCW monitor (step-27). `createContextMonitorIfEnabled` honors
+    //   `CHOVY_CTX_DISABLE=1` and degrades gracefully on init failure.
+    //   Sub-agents share the env switch but get their own instance.
+    const ctxMonitor: ContextMonitor | null = createContextMonitorIfEnabled({
+      providerId: opts.provider,
+      model,
+      cfg: config,
+      env: process.env,
+      checkpoints: getCheckpointCoordinator(),
+      cwd,
+      threadId: sessionId,
+      parentSignal: ac.signal,
+      parentRole: role,
+      getRecentMessages: () => messages.slice(-12),
+      // step-23 will close this over its goal state when the engine is
+      // invoked from the goal loop; ad-hoc runs leave it undefined.
+      getObjective: () => undefined,
+      getHistoryTail: () => [],
+    });
+    let pendingPressure: PressureSnippet | undefined;
+    let pendingBudget: { used: number; total: number } | undefined;
 
     // Track for ATP relevance.
     let lastToolCalls: string[] = [];
@@ -363,12 +382,18 @@ export class QueryEngine {
         }
 
         // ── 1. system prompt ──────────────────────────────────────────────
+        // step-27: pendingPressure / live ctx-budget arrive from the previous
+        // round's monitor.inspect; the FIRST round always sees `fresh` since
+        // the monitor hasn't run yet. Subsequent rounds reflect the latest
+        // measurement.
         const effective: EffectivePrompt = buildEffectiveSystemPrompt(
           fillBuildOptions(opts, {
             provider: opts.provider,
             model,
             cwd,
             planMode: permState.mode === "plan",
+            pressure: pendingPressure,
+            contextBudget: pendingBudget,
           }),
         );
 
@@ -393,10 +418,24 @@ export class QueryEngine {
           shape,
         });
 
-        // ── 3. SCW (TODO step-27/28) ──────────────────────────────────────
-        // The monitor lives under `src/context/`; until it lands we just
-        // assume the conversation fits. The engine surface accepts a
-        // `contextBudget` hint already so the integration is additive.
+        // ── 3. SCW monitor (step-27) ──────────────────────────────────────
+        // Inspect AFTER the system prompt is built (we measure system bytes
+        // alongside the message list) but BEFORE the provider call so the
+        // UI / pressure block reflect THIS round's actual input. The
+        // monitor's transition logic emits telemetry + fires checkpoint
+        // triggers internally; the engine only forwards the snapshot to
+        // the optional UI callback and stages `pendingPressure` /
+        // `pendingBudget` for the NEXT round's prompt build.
+        if (ctxMonitor) {
+          const snap: MonitorState = ctxMonitor.inspect(
+            messages,
+            effective.text.length,
+          );
+          notifyContextSnapshot(opts.onContextSnapshot, snap);
+          const next = pendingFromMonitorState(snap);
+          pendingPressure = next.pressure;
+          pendingBudget = next.budget;
+        }
 
         // ── 4. normalize messages for provider ────────────────────────────
         const cleaned = pruneOrphanToolMessages(messages);

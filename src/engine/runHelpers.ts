@@ -12,13 +12,25 @@ import {
   type PermissionEngineState,
 } from "../harness/permissions/index.js";
 import type {
+  AgentRole,
+  ChatMessage,
+  ParentRuntimeCtx,
   PermissionPreflight,
   ProviderId,
+  SpawnFn,
   Tool,
   ToolContext,
 } from "../types/index.js";
 import type { BuildOptions } from "../prompts/index.js";
+import type {
+  ContextBudgetSnippet,
+  PressureSnippet,
+} from "../prompts/index.js";
 import type { QueryRunOptions } from "./queryEngine.js";
+import {
+  getSpawnFnBuilder,
+  getDispatchFnBuilder,
+} from "./runtimeRegistry.js";
 
 // ── tool pool resolution ──────────────────────────────────────────────────
 
@@ -70,17 +82,34 @@ export async function runPreflight(
 /**
  * Compose the effective `BuildOptions` for `buildEffectiveSystemPrompt`,
  * merging `opts.systemPromptOpts` (caller layer-overrides) with the runtime
- * context (cwd / model / planMode) the engine knows.
+ * context (cwd / model / planMode / SCW pressure + budget) the engine knows.
+ *
+ * step-27 added two optional fields:
+ *   - `runCtx.pressure`  — SCW `<context-pressure>` block; injected by the
+ *                          monitor on level transitions, applied to the
+ *                          NEXT round's build.
+ *   - `runCtx.contextBudget` — live ctx-budget line; reflects the
+ *                          previous round's measured token usage so the
+ *                          model sees real numbers, not a placeholder.
  */
 export function fillBuildOptions(
   opts: QueryRunOptions,
-  runCtx: { provider: ProviderId; model: string; cwd: string; planMode: boolean },
+  runCtx: {
+    provider: ProviderId;
+    model: string;
+    cwd: string;
+    planMode: boolean;
+    pressure?: PressureSnippet;
+    contextBudget?: ContextBudgetSnippet;
+  },
 ): BuildOptions {
   const base: BuildOptions = {
     context: {
       cwd: { cwd: runCtx.cwd },
       model: { provider: runCtx.provider, model: runCtx.model },
       planMode: runCtx.planMode,
+      ...(runCtx.pressure ? { pressure: runCtx.pressure } : {}),
+      ...(runCtx.contextBudget ? { contextBudget: runCtx.contextBudget } : {}),
     },
   };
   if (!opts.systemPromptOpts) return base;
@@ -105,4 +134,49 @@ export function makeAgentId(): string {
   const g = globalThis as { crypto?: { randomUUID?: () => string } };
   if (g.crypto?.randomUUID) return `agt_${g.crypto.randomUUID()}`;
   return `agt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ── spawn / dispatch handle construction ───────────────────────────────────
+
+export interface SpawnHandlesInput {
+  role: AgentRole;
+  agentId: string;
+  provider: ProviderId;
+  model: string;
+  mode: PermissionEngineState["mode"];
+  messages: ChatMessage[];
+  signal: AbortSignal;
+}
+
+export interface SpawnHandles {
+  spawn?: SpawnFn;
+  dispatch?: ToolContext["dispatchSwarm"];
+}
+
+/**
+ * Build the spawn / dispatch handles for a run. Only the top-level `main`
+ * role gets handles — sub-agents recursing through dispatch is opt-in
+ * (step-20 left for a future step). Builders are registered indirectly
+ * via `runtimeRegistry` (avoids the `engine → swarm → agent → engine`
+ * cycle), and the closures hold the engine's *live* `messages` array so
+ * the snapshot the child receives reflects what the parent has seen up
+ * to the call moment.
+ */
+export function buildSpawnHandles(input: SpawnHandlesInput): SpawnHandles {
+  if (input.role !== "main") return {};
+  const spawnBuilder = getSpawnFnBuilder();
+  if (!spawnBuilder) return {};
+  const parentCtx: ParentRuntimeCtx = {
+    parentId: input.agentId,
+    parentRole: input.role,
+    parentProvider: input.provider,
+    parentModel: input.model,
+    parentMode: input.mode,
+    parentMessages: input.messages,
+    parentSignal: input.signal,
+  };
+  const spawn = spawnBuilder(parentCtx);
+  const dispatchBuilder = getDispatchFnBuilder();
+  const dispatch = dispatchBuilder ? dispatchBuilder(parentCtx) : undefined;
+  return { spawn, dispatch };
 }
