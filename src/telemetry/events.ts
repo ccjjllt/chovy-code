@@ -44,7 +44,53 @@ export type TelemetryEvent =
       ts: number;
     }
   | { type: "context.threshold"; level: "soft" | "hard"; tokens: number; ts: number }
-  | { type: "goal.iteration"; round: number; converged: boolean; ts: number }
+  | {
+      /**
+       * step-23: emitted exactly once when `runGoal()` enters the loop.
+       * Single source is `src/goals/iterations.ts`. `convergence` is the
+       * resolved mode tag (`rubric` / `command` / `hybrid`); the rubric
+       * text and shell command stay on the persisted state file (they
+       * may contain user-private info — telemetry is JSONL on disk too,
+       * but we want the wire shape consistent with `agent.start`).
+       */
+      type: "goal.start";
+      goalId: string;
+      threadId: string;
+      convergence: "rubric" | "command" | "hybrid";
+      maxRounds: number;
+      budgetUSD: number;
+      ts: number;
+    }
+  | {
+      /**
+       * step-23: emitted once when `runGoal()` exits the loop. `status` is
+       * the terminal `GoalStatus`; `rounds` is final round count; `costUSD`
+       * is `goal.totalCostUSD` (engine + rubric judge folded in, mirrors
+       * step-21 judge cost folding into dispatch).
+       */
+      type: "goal.end";
+      goalId: string;
+      threadId: string;
+      status: "achieved" | "failed" | "cancelled" | "paused";
+      rounds: number;
+      costUSD: number;
+      ts: number;
+    }
+  | {
+      /**
+       * step-23: emitted at the START of each goal-loop iteration (matches
+       * the `tools.described` / `prompt.shape` per-round pattern). The
+       * loop emits this BEFORE the engine round so cancelled / failed
+       * runs still leave a breadcrumb. Single source is
+       * `src/goals/iterations.ts`; `converged` is filled in for the
+       * round that actually ran the convergence check (false otherwise).
+       */
+      type: "goal.iteration";
+      goalId?: string;
+      round: number;
+      converged: boolean;
+      ts: number;
+    }
   | { type: "memory.injection"; bytes: number; entries: number; ts: number }
   | { type: "swarm.dispatch"; n: number; parallelism: number; ts: number }
   | { type: "prompt.shape"; shape: PromptShape; ts: number }

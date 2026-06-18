@@ -1,4 +1,7 @@
 import type { PermissionMode } from "../config/index.js";
+import type { CreateGoalInput, RunGoalResult } from "../goals/index.js";
+import type { GoalState } from "../types/index.js";
+import { goalSlashEntry } from "./slashCommands/goal.js";
 
 /**
  * Read-only/mutator surface that slash command handlers receive. Keeping
@@ -18,6 +21,34 @@ export interface ReplCtx {
   listAgents(): string[];
   /** TODO step-29: real list pulled from the skill graph. */
   listSkills(): string[];
+  /**
+   * step-23: goal-loop runtime injected by the REPL. Absent in non-REPL
+   * test contexts — `/goal` handler bails with an INTERNAL message when
+   * undefined. The shape is intentionally narrow (the REPL owns the
+   * provider/model + queryEngine wiring; the slash handler is UI-only).
+   */
+  goal?: ReplGoalRuntime;
+}
+
+/**
+ * Runtime hooks the REPL injects so `/goal` doesn't need to import the
+ * QueryEngine / providers (keeps `cli/slashCommands/goal.ts` UI-only).
+ */
+export interface ReplGoalRuntime {
+  /** REPL session id ⇒ goal threadId. */
+  threadId: string;
+  /** Current cwd ⇒ goal persistence dir. */
+  cwd: string;
+  /** Create + spawn the goal loop. Returns the freshly created GoalState. */
+  startGoal(input: CreateGoalInput): Promise<GoalState>;
+  /** Cancel the in-flight loop (idempotent). */
+  cancelGoal(): void;
+  /** Re-enter the loop with an existing (paused / resumed) goal. */
+  resumeGoalLoop(goal: GoalState): Promise<RunGoalResult>;
+  /** Find the most-recent paused goal on disk for this thread. */
+  findPausedGoal(): Promise<GoalState | null>;
+  /** Notify the REPL UI of the new goal state (or clear). */
+  setReplGoal(goal: GoalState | null): void;
 }
 
 export type SlashHandler = (args: string, ctx: ReplCtx) => Promise<void> | void;
@@ -72,15 +103,7 @@ export const slashCommands: Record<string, SlashEntry> = {
     },
   },
 
-  goal: {
-    help: "设置 / 查看长程目标（占位，TODO step-23）",
-    handler: (args, ctx) => {
-      const v = args.trim();
-      if (!v) { ctx.appendSystem("当前未设置 /goal（goal 循环将于 step-23 接入）。"); return; }
-      ctx.setGoal(v);
-      ctx.appendSystem(`已记录目标：${v}（仅占位，循环执行待 step-23）`);
-    },
-  },
+  goal: goalSlashEntry,
 
   mem: {
     help: "记忆操作 list/show/search（TODO step-24/25）",

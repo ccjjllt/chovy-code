@@ -76,6 +76,21 @@ export function taskDir(cwd: string, taskId: string): string {
   return join(tasksDir(cwd), taskId);
 }
 
+/** Directory of persisted `/goal` states (step-23). One JSON per goal. */
+export function goalsDir(cwd: string): string {
+  return join(projectDir(cwd), "goals");
+}
+
+/** Path of a single goal's persisted state under `goals/<goal-id>.json`. */
+export function goalFile(cwd: string, goalId: string): string {
+  return join(goalsDir(cwd), `${goalId}.json`);
+}
+
+/** Per-goal progress log under `tasks/<goal-id>/progress.md` (step-23/26). */
+export function goalProgressFile(cwd: string, goalId: string): string {
+  return join(taskDir(cwd, goalId), "progress.md");
+}
+
 /** Per-session JSONL transcripts. */
 export function sessionsDir(cwd: string): string {
   return join(projectDir(cwd), "sessions");
@@ -113,6 +128,7 @@ export function ensureProjectDirs(cwd: string): void {
   mkdirSync(checkpointDir(cwd), { recursive: true });
   mkdirSync(tasksDir(cwd), { recursive: true });
   mkdirSync(sessionsDir(cwd), { recursive: true });
+  mkdirSync(goalsDir(cwd), { recursive: true });
 
   ensuredProjectIds.add(id);
 }

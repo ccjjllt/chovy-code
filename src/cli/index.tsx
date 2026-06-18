@@ -201,14 +201,39 @@ program
     startOneShot(prompt, ctx);
   });
 
-// `chovy goal "..."` — placeholder until step-23 lands the loop.
+// `chovy goal "..."` — step-23 headless long-running task entry.
+//   chovy goal "<objective>" [--rubric "..."] [--cmd "..."] [--max-rounds N] [--budget-usd X]
 program
   .command("goal <objective>")
-  .description("启动 /goal 长程任务（占位，TODO step-23）")
-  .action((objective: string, ...args: unknown[]) => {
-    resolveCtxFromActionArgs(args);
-    logger.info(`/goal: ${objective}`);
-    logger.info("（goal 循环将于 step-23 接入；当前仅记录目标。）");
+  .description("启动 /goal 长程任务（step-23）")
+  .option("--rubric <rule>", "自定义收敛 rubric（小模型评估）")
+  .option("--cmd <command>", "自定义收敛命令（exit=0 视为达成）")
+  .option("--max-rounds <n>", "最大循环轮数（默认 25）", parseIntOpt)
+  .option("--budget-usd <x>", "总成本上限（USD，默认 5）", parseFloatOpt)
+  .action(async (
+    objective: string,
+    options: {
+      rubric?: string;
+      cmd?: string;
+      maxRounds?: number;
+      budgetUsd?: number;
+    },
+    ...rest: unknown[]
+  ) => {
+    const ctx = resolveCtxFromActionArgs(rest);
+    assertProviderReady(ctx.provider);
+    const { runHeadlessGoal } = await import("./goalHeadless.js");
+    const code = await runHeadlessGoal({
+      provider: ctx.provider,
+      model: ctx.model ?? getProvider(ctx.provider).info.defaultModel,
+      mode: ctx.mode,
+      objective,
+      rubric: options.rubric,
+      cmd: options.cmd,
+      maxRounds: options.maxRounds,
+      budgetUSD: options.budgetUsd,
+    });
+    process.exit(code);
   });
 
 // `chovy mem ...` — TODO step-25.

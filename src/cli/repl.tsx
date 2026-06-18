@@ -11,13 +11,24 @@ import { MessageList, type UIMessage } from "./components/MessageList.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";
 import { StatusLine } from "./components/StatusLine.js";
 import { SwarmPanel } from "./components/SwarmPanel.js";
+import { GoalPanel } from "./components/GoalPanel.js";
 import { InputBox } from "./inputBox.js";
 import { useSwarmState, swarmCounts } from "./state/swarmStore.js";
 import {
   slashCommands,
   listSlashEntries,
   type ReplCtx,
+  type ReplGoalRuntime,
 } from "./slashCommands.js";
+import {
+  createGoal,
+  finalizeGoal,
+  listGoals,
+  runGoal,
+  type CreateGoalInput,
+  type RunGoalResult,
+} from "../goals/index.js";
+import type { GoalState } from "../types/index.js";
 
 interface Props {
   provider: ProviderId;
@@ -34,17 +45,13 @@ const newId = (): string => {
 /**
  * Interactive REPL screen.
  *
- * What lives here vs. step-XX:
- *   - input/output, slash dispatch, busy/cancel state — here (step-05)
- *   - real cost & ctx numbers in the header — step-16 / step-27
- *   - cancellation that actually stops the provider mid-stream — step-16/17
- *   - swarm panel, goal panel, hooks UI — step-22 / step-23 / step-13
- *
- * For step-05 we keep `runAgent` as-is; cancellation is implemented as a
- * local "drop tokens after this point" flag plus a UI `[interrupted]` mark.
- * The background request still completes (its result is ignored), which is
- * acceptable for a one-step CLI shell and gets upgraded once the engine
- * gains a proper AbortSignal in step-16.
+ * step-23 additions:
+ *   - GoalPanel mounts whenever `goalState` is non-null;
+ *   - Tab cycles focus between input ↔ swarm panel ↔ goal panel (only the
+ *     panels that are visible are part of the cycle);
+ *   - the slash handler `/goal` receives a `ReplGoalRuntime` that wraps
+ *     `createGoal` + `runGoal` with the REPL's provider/model/cwd, so
+ *     `cli/slashCommands/goal.ts` stays UI-only.
  */
 export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactElement {
   const { exit } = useApp();
@@ -60,7 +67,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   const [tool, setTool] = useState<string | undefined>(undefined);
   const [mode, setMode] = useState<PermissionMode>(initialMode);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [goal, setGoal] = useState<string | null>(null);
+  const [goalState, setGoalState] = useState<GoalState | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   // Budget is a placeholder until step-16/27 wire real numbers.
   const [budget] = useState<BudgetSnapshot>({
@@ -73,54 +80,149 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   const ctrlCArmedRef = useRef(false);
   const ctrlCTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // step-23: per-REPL goal-loop AbortController. Nullable — created on
+  // /goal start, replaced on resume, dropped on completion.
+  const goalAcRef = useRef<AbortController | null>(null);
+  const threadIdRef = useRef<string>(`thread_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`);
+
   // step-22: live sub-agent state for the SwarmPanel + HeaderBar chip.
-  // `CHOVY_NO_SWARM_PANEL=1` disables the panel entirely (Windows ConHost
-  // flicker workaround per spec §风险); the header chip still reflects
-  // counts so the user knows sub-agents are running.
   const swarm = useSwarmState();
   const panelDisabled = process.env["CHOVY_NO_SWARM_PANEL"] === "1";
-  const showPanel = !panelDisabled && swarm.agents.length > 0;
-  const [panelFocused, setPanelFocused] = useState(false);
+  const showSwarmPanel = !panelDisabled && swarm.agents.length > 0;
+  const showGoalPanel = !panelDisabled && goalState !== null;
   const swarmSummary: SwarmSummary | undefined = swarm.agents.length > 0
     ? swarmCounts(swarm.agents)
     : undefined;
 
-  // Tab toggles focus between InputBox and SwarmPanel. When the panel isn't
-  // visible, focus stays on input. Tab is captured only when not busy so
-  // mid-run tabbing doesn't disrupt the input box.
+  // 3-way focus cycle: "input" → "swarm" → "goal" → "input". Only visible
+  // panels participate. Hotkey: Tab when not busy.
+  type Focus = "input" | "swarm" | "goal";
+  const [focus, setFocus] = useState<Focus>("input");
+
   useInput(
-    (input, key) => {
-      if (input !== "t" && !key.tab) return;
-      // Require the raw Tab key (Ink delivers it as key.tab with empty input
-      // on most terminals); accept "t" only when ctrl is held as a fallback.
-      if (!key.tab && !(key.ctrl && input === "t")) return;
+    (_input, key) => {
+      if (!key.tab) return;
       if (busy) return;
-      setPanelFocused((v) => !v);
+      const ring: Focus[] = ["input"];
+      if (showSwarmPanel) ring.push("swarm");
+      if (showGoalPanel) ring.push("goal");
+      if (ring.length <= 1) return;
+      const idx = ring.indexOf(focus);
+      const next = ring[(idx + 1) % ring.length] ?? "input";
+      setFocus(next);
     },
-    { isActive: showPanel && !busy },
+    { isActive: !busy },
   );
 
-  // If the panel disappears (pool drained), drop focus back to input so the
-  // user isn't stuck in a focused-but-invisible state.
+  // Drop focus back to input if the panel we were focused on disappears.
   useEffect(() => {
-    if (!showPanel && panelFocused) setPanelFocused(false);
-  }, [showPanel, panelFocused]);
+    if (focus === "swarm" && !showSwarmPanel) setFocus("input");
+    if (focus === "goal" && !showGoalPanel) setFocus("input");
+  }, [focus, showSwarmPanel, showGoalPanel]);
 
   const appendSystem = useCallback((content: string) => {
     setMessages((xs) => [...xs, { id: newId(), role: "system", content }]);
   }, []);
+
+  // ── step-23: REPL goal-loop runtime injected into ReplCtx.goal ──────────
+  const goalRuntime: ReplGoalRuntime = useMemo(() => ({
+    threadId: threadIdRef.current,
+    cwd: process.cwd(),
+    startGoal: async (input: CreateGoalInput): Promise<GoalState> => {
+      // Create + persist + start the loop; the loop runs in the background
+      // and updates `goalState` via the `onRound` callback.
+      const goal = createGoal(input);
+      setGoalState({ ...goal });
+      goalAcRef.current = new AbortController();
+      void runGoal(goal, {
+        cwd: process.cwd(),
+        provider,
+        model,
+        permissionMode: mode,
+        abortSignal: goalAcRef.current.signal,
+        onRound: (g) => {
+          // Snapshot the mutating reference so React re-renders.
+          setGoalState({ ...g });
+        },
+        onConvergenceCheck: (g, ok, reasons) => {
+          appendSystem(
+            ok
+              ? `[goal] round ${g.rounds} ✓ converged`
+              : `[goal] round ${g.rounds} not yet — ${reasons.slice(0, 2).join("; ")}`,
+          );
+        },
+        onHookMessage: appendSystem,
+      })
+        .then((res: RunGoalResult) => {
+          setGoalState({ ...res.goal });
+          appendSystem(
+            `[goal] ${res.goal.status} after ${res.rounds} round(s); cost $${res.costUSD.toFixed(4)}`,
+          );
+          // Drop the in-memory goal once truly terminal so the panel hides.
+          // `paused` stays so the user can /goal resume.
+          if (
+            res.goal.status === "achieved" ||
+            res.goal.status === "failed" ||
+            res.goal.status === "cancelled"
+          ) {
+            setGoalState(null);
+          }
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error(msg);
+          appendSystem(`[goal] error: ${msg}`);
+        });
+      return goal;
+    },
+    cancelGoal: () => {
+      goalAcRef.current?.abort();
+      goalAcRef.current = null;
+    },
+    resumeGoalLoop: async (goal: GoalState): Promise<RunGoalResult> => {
+      goalAcRef.current = new AbortController();
+      setGoalState({ ...goal });
+      const res = await runGoal(goal, {
+        cwd: process.cwd(),
+        provider,
+        model,
+        permissionMode: mode,
+        abortSignal: goalAcRef.current.signal,
+        onRound: (g) => setGoalState({ ...g }),
+        onHookMessage: appendSystem,
+      });
+      setGoalState({ ...res.goal });
+      if (
+        res.goal.status === "achieved" ||
+        res.goal.status === "failed" ||
+        res.goal.status === "cancelled"
+      ) {
+        setGoalState(null);
+      }
+      return res;
+    },
+    findPausedGoal: async (): Promise<GoalState | null> => {
+      const all = await listGoals(process.cwd());
+      const paused = all.find(
+        (g) => g.threadId === threadIdRef.current && g.status === "paused",
+      ) ?? all.find((g) => g.status === "paused");
+      return paused ?? null;
+    },
+    setReplGoal: (g) => setGoalState(g ? { ...g } : null),
+  }), [appendSystem, mode, model, provider]);
 
   const ctx: ReplCtx = useMemo(() => ({
     setMode: (m) => setMode(m),
     appendSystem,
     clearMessages: () => setMessages([]),
     toggleHelp: (show) => setHelpOpen((v) => (show ?? !v)),
-    setGoal: (g) => setGoal(g),
+    setGoal: (g) => {
+      // Legacy slot preserved for non-/goal callers; step-23 routes through
+      // `goal.setReplGoal` instead. Keep this so old handlers keep working.
+      if (g === null) setGoalState(null);
+    },
     exit: () => exit(),
     listProviders: () => listProviders().map((p) => p.info.id),
-    // step-22: format the live pool handles for /agents. One line per
-    // handle with id / role / status / phase / cost, so the user can
-    // inspect without opening the panel (non-TTY friendly).
     listAgents: () => {
       const xs = getSubAgentPool().list();
       if (xs.length === 0) return [];
@@ -130,7 +232,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
       });
     },
     listSkills: () => [], // TODO step-29
-  }), [appendSystem, exit]);
+    goal: goalRuntime,
+  }), [appendSystem, exit, goalRuntime]);
 
   const runSlash = useCallback(async (line: string): Promise<void> => {
     const trimmed = line.replace(/^\//, "");
@@ -214,18 +317,23 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
       setBusy(false);
       setTool(undefined);
     }
-  }, [model, provider, runSlash]);
+  }, [model, provider, runSlash, mode]);
 
   const onCancel = useCallback(() => {
     if (busy) {
       cancelledRef.current = true;
       appendSystem("已请求取消当前运行（Esc）。");
+      return;
     }
-  }, [busy, appendSystem]);
+    if (goalAcRef.current && goalState?.status === "active") {
+      goalAcRef.current.abort();
+      goalAcRef.current = null;
+      appendSystem("已请求取消 /goal 循环（Esc）。");
+    }
+  }, [busy, appendSystem, goalState]);
 
   const onCtrlC = useCallback(() => {
     if (busy) {
-      // First Ctrl+C while busy → interrupt; do NOT exit.
       cancelledRef.current = true;
       appendSystem("已中断当前运行。再次按 Ctrl+C 可退出 REPL。");
       ctrlCArmedRef.current = true;
@@ -234,6 +342,9 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
       return;
     }
     if (ctrlCArmedRef.current) {
+      // Cancel any in-flight goal before exiting so the loop's finally
+      // block runs (telemetry, persist).
+      goalAcRef.current?.abort();
       exit();
       return;
     }
@@ -245,6 +356,9 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
 
   useEffect(() => () => {
     if (ctrlCTimerRef.current) clearTimeout(ctrlCTimerRef.current);
+    // Best-effort: cancel any pending goal so the unmount doesn't leave
+    // an orphaned engine call running.
+    goalAcRef.current?.abort();
   }, []);
 
   return (
@@ -257,11 +371,26 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
         swarm={swarmSummary}
       />
 
-      {goal ? (
-        <Box paddingX={1}>
-          <Text color="magenta" bold>{`/goal `}</Text>
-          <Text>{goal}</Text>
-          <Text dimColor>{"  (TODO step-23)"}</Text>
+      {showGoalPanel && goalState ? (
+        <Box marginTop={1}>
+          <GoalPanel
+            goal={goalState}
+            focused={focus === "goal"}
+            onPause={() => {
+              goalAcRef.current?.abort();
+              const cur = goalState;
+              if (cur) {
+                finalizeGoal(cur.threadId, "paused");
+                setGoalState({ ...cur, status: "paused" });
+              }
+              appendSystem("Goal paused（/goal resume 可继续）。");
+            }}
+            onCancel={() => {
+              goalAcRef.current?.abort();
+              setGoalState(null);
+              appendSystem("Goal cancelled.");
+            }}
+          />
         </Box>
       ) : null}
 
@@ -279,14 +408,18 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
         </Box>
       ) : null}
 
-      {showPanel ? (
+      {showSwarmPanel ? (
         <Box marginTop={1}>
           <SwarmPanel
             agents={swarm.agents}
             budget={{ spent: swarm.budget.costUSD }}
-            focused={panelFocused}
-            onClose={() => setPanelFocused(false)}
-            onGoalToggle={() => setGoal((g) => (g ? null : "(toggle via panel)"))}
+            focused={focus === "swarm"}
+            onClose={() => setFocus("input")}
+            onGoalToggle={() => {
+              // Legacy hook from the swarm panel (predates step-23). Toggle
+              // focus to the goal panel if one is active, else no-op.
+              if (showGoalPanel) setFocus("goal");
+            }}
           />
         </Box>
       ) : null}
@@ -300,8 +433,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
           onCtrlC={onCtrlC}
         />
       </Box>
-      {panelFocused ? (
-        <Text dimColor>{"  (panel focused — Tab to return to input)"}</Text>
+      {focus !== "input" ? (
+        <Text dimColor>{`  (panel focused: ${focus} — Tab to cycle)`}</Text>
       ) : null}
     </Box>
   );

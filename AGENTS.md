@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）全部完成构建并通过复验；下一步进入 Phase F（step-23 Goal Loop）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`（本轮修复 4 个跨 step 隐患 P3-P6）。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）全部完成构建并通过复验；下一步进入 Phase G（step-24 Memory Store）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`（本轮修复 4 个跨 step 隐患 P3-P6）；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -472,3 +472,67 @@ chovy log tail                   # 看 telemetry
 - **`onToken` / `onToolStart` / `onUsage` 回调 best-effort**：pool 在 `runChild` 给 `engine.run` 传这三个回调驱动 swarmBus；每个回调 try/catch + swallow——UI-only 副作用绝**不**能让子 agent run 失败。step-20 dispatch / step-23 goal 不要在 `onToken` 里做影响结果的事。
 
 **子 Agent 取消独立 AC 不变量（再强调，§9 代码化）**：每个 `SubAgentHandle` 一个 `new AbortController()`；父 signal 仅作为 `addEventListener("abort", () => childAc.abort())` 的触发源。`pool.runChild` 把 `entry.ac.signal` 传给 `engine.run` 作 `abortSignal`，engine 内部再包一层 AC（双层包装与父隔离）。SwarmR router 也是同模式（本地 AC 包装 caller signal）。**绝不**把 `parentCtx.parentSignal` 直接传 `engine.run`。
+
+## 19. Phase F 不变量（Goal Loop）
+
+> Phase F（step-23）产物/验收见 `docs/complete/step-23-acceptance.md`。本节固化 step-23 跨步骤生效的不变量；后续 Phase G-I 扩展对应模块时必须遵守。
+
+**单源规约**（接 §16/§17/§18 同模式）：
+- `GoalStatus` / `ConvergenceMode` / `GoalState` → `src/types/goal.ts`（step-23 冻结）；老 draft 字段 `GoalPhase` / `ConvergenceCriteria` 标 `@deprecated` 但保留导出（grep 验证零 in-tree consumer）。
+- `goal.start` / `goal.end` / `goal.iteration` telemetry 单源 = `src/goals/iterations.ts`；其它模块（CLI / GoalPanel / convergence）**不**直接发这些事件。
+- rubric judge cost 折叠进 `goal.totalCostUSD`（CostTracker `telemetry:false`），与 step-21 judge 同模式；**不**单独发 `agent.cost`。
+- `goalsByThread` Map 在 `src/goals/goalState.ts` 进程内独占（与 cc-haha 一致）；任何修改必须经 `createGoal/updateGoal/finalizeGoal/dropActiveGoal/loadGoal` 这 5 个 chokepoint，不允许从外部 mutate `GoalState` 引用绕过 `updatedAt` 戳记。
+
+**冻结接口**（字段名不改，扩展只追加可选字段）：
+- `RunGoalOptions` / `RunGoalResult` / `EvaluateOptions` / `EvaluateResult`（step-23 冻结，B5 屏障预留）：扩展**追加**字段；不改既有签名。
+- `ReplCtx.goal: ReplGoalRuntime`（step-23 追加，§16 兼容）：5 字段（`startGoal/cancelGoal/resumeGoalLoop/findPausedGoal/setReplGoal`）+ `threadId`/`cwd`；UI-only，不 leak provider/queryEngine 引用。
+- `ParsedGoalCommand` discriminated union（`type` 字段）：6 子命令分类，扩展只新增 `type` 值，不替换既有。
+
+**Loop-driven Stop 不变量（AGENTS.md §17 Stop-hook 适配延伸）**：
+- chovy-code **不**扩 `HookEvent` union 加 `Stop` 事件；goal 循环作为 outer orchestrator 截获 `result.stopReason==='final'` 决定继续/终止。
+- `GoalIteration` 钩子事件保留为 *advisory* — 用户写的 hook 可观测每轮（由 `iterations.ts` emit），但 hook 返回 `block` 不会停循环（只 log）。`emitGoalIteration` 在 `goalHook.ts` swallow 任何异常。
+- `<goal-not-achieved/>${reasons.join('; ')}` user message 是 chovy-code 私有的注入约定（cc-haha 用 `<goal-objective>` 注入 + Stop hook 拦截，chovy-code 直接在 messages 数组里追加）；后续 step 扩此 sentinel 时**追加** XML 标签，不 rename。
+
+**取消传播不变量（goal-loop）**：
+- 路由器**本地 AbortController** 包装外部 `opts.abortSignal`（§9 红线代码化）；budget 超限 / 死循环兜底都 `ac.abort()`，不污染调用方 signal。
+- `ac.signal` 传给 `engine.run({abortSignal: ac.signal})`（engine 内部再包一层 AC，双层隔离）。**绝不**把 `opts.abortSignal` 直接传 engine。
+- REPL 的 `goalAcRef` 同样是本地 AC，Esc / `/goal pause` / Ctrl+C × 2 都通过这个 ref 触发。
+
+**rubric judge 不变量**：
+- 默认走父 provider 的小模型（`smallModelFor` 表，`convergence.ts`），不复用 `swarm/judge.ts` 的长上下文 fallback 链（用途不同：judge 要长 ctx，rubric 要小快）。如需让 rubric 走长 ctx fallback，**新加** `judge.ts` export，**不**改 `smallModelFor`（避免漂移，与 PCM 单源同模式）。
+- rubric 调用 `provider.complete({...signal: opts.abortSignal})`；命中 AbortError → `ok:false / reason:'cancelled'`，**不**抛。
+- `tryFixJSON` 五步修复（去 ``` / 截首尾 prose / 补缺括号）从 `swarm/judge.ts` import；**不**重实现（单源）。
+
+**command rubric 不变量**：
+- `bashTool.run({command, timeoutMs:120_000}, ctx)` 路径走合成 `ToolContext`（cwd / abortSignal / no-op hookEngine / `permissions.preflight=()=>allow` / `config: loadConfig()`）；`config` 字段必须填（ToolContext 冻结字段）。
+- 跳过 L2-L6 权限层是**故意的**：用户显式通过 `--cmd` 设置 rubric。`bashTool` 内部的 `evaluateDanger` 在 `run()` 顶部仍会再跑（§16 L1g safety check 同源）—— `rm -rf /` / `--no-verify` / `git push --force` 等 §5 红线仍然 hard-deny。
+- `result.structuredOutput.kind==='completed' && exitCode===expectedExitCode` 是收敛判据；其它 kind（`denied` / `backgrounded`）→ `ok:false`。
+
+**死循环兜底不变量**：
+- `noProgressRounds` 计数器：每轮 `roundMutatedFiles(result)` 启发式扫描 `result.messages` 中是否有 fs-mutate tool message（`toolName === 'file_write'/'file_edit'` 或 `bash` 输出含 `classes=...WRITE`），无则 `noProgressRounds++`，有则归零。
+- 连续 `NO_PROGRESS_LIMIT=5` 轮无进展 → `status='paused'` + 警告日志。用户可 `/goal resume` 继续（明知风险）。
+- 启发式偏保守（漏报方向是"提早 pause"），符合"防卡死"目标；step-26 真实 checkpoint 落地后可改成"无文件 hash 变化"——更准但 cost 高。
+
+**持久化不变量**：
+- 所有 `safeFs.write` 调用包 try/catch + warn，磁盘异常不让循环崩溃（in-memory 仍可用）。
+- `loadGoal` **不**覆盖已存在的 in-memory entry（`goalsByThread.has(threadId)` 检查）—— 一个活跃 goal 引用比磁盘副本更权威（in-memory entry 是被 mutate 的；persistGoal 写它最新）。
+- 持久化 schema **不**版本化；扩展字段 MUST 可选（向后兼容老 JSON 文件）。
+
+**checkpoint 协作不变量**：
+- `triggerCheckpoint` detached（`void ctx.spawnFn(...)` 不 await）；checkpoint 写入失败**永不**让 goal 循环失败（§17 onToken/onToolStart/onUsage best-effort 同模式延伸）。
+- `shouldCheckpoint(goal) === goal.rounds > 0 && goal.rounds % CHECKPOINT_INTERVAL_ROUNDS === 0`（默认 `CHECKPOINT_INTERVAL_ROUNDS=5`）。
+- step-26 落地真实 checkpoint 模板时 **替换** `triggerCheckpoint` 内的 prompt 文本 + 路径沙箱接入；spawn API 不变（继续走 step-19 既有 `pool.spawn({role:"checkpoint-writer"})`）。
+
+**REPL UI 不变量（step-23 GoalPanel）**：
+- GoalPanel 仅在 `goalState !== null && !CHOVY_NO_SWARM_PANEL` 时挂载；`CHOVY_NO_SWARM_PANEL=1` 同时禁用 SwarmPanel + GoalPanel（Windows ConHost 闪烁缓解，§Phase E 不变量延伸）。
+- 3-way Tab 焦点环 `"input" → "swarm" → "goal" → "input"`，**仅可见**面板参与（运行时 ring 重建）。busy 时不切焦点（保持 §Phase E 不变量）。后续步骤新加面板（step-29 SkillPanel）请扩展同一 ring 而非新建 hotkey。
+- `ReplGoalRuntime` 由 REPL 闭合 provider/model/mode 注入；`cli/slashCommands/goal.ts` 不 import `runGoal` / `QueryEngine`（保持 UI-only 边界）。
+
+**headless 退出码不变量**：
+- `chovy goal "..."` 退出码：`0` = `achieved`、`1` = `failed`/`cancelled`、`2` = `paused`。CI 可用。
+- SIGINT → `ac.abort()`；headless 进程响应一次 `process.once('SIGINT', ...)`，不重复绑定（避免双重退出语义）。
+
+**依赖图无环**：
+- `src/goals/*` import `engine/index` (QueryEngine) + `swarm/judge.tryFixJSON` + `tools/exec/bash.bashTool` + `harness/hooks/index.createHookEngine` + `agent` (SpawnFn type only)；**不**反向被 engine / providers / harness 依赖（goals 是叶子）。
+- `src/cli/repl.tsx` import `goals/index` 全套；`cli/slashCommands/goal.ts` 仅 import `goals/index` + 类型，**不**触 engine/providers（保持 UI-only）。
+- `src/cli/index.tsx` 通过动态 `import("./goalHeadless.js")` 加载头less runner，避免主 CLI bundle 把 `src/goals/` 都拉进来（lazy load）。

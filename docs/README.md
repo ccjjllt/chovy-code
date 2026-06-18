@@ -77,8 +77,12 @@ chovy-code/
   provider fallback + tryFixJSON 五步修复 + ≤1 次自我修复 + 大 N 截断 + 取消
   独立 AC）+ Ink UI 面板（SwarmPanel + AgentRow + AgentDetail + HotkeyBar +
   swarmStore + outputBuffer + Tab 焦点 + 16ms 节流 + virtualization）。
+- **Phase F**：`/goal` 长程任务循环（GoalState 5-state + JSON 持久化 +
+  Loop-driven Stop 适配 + rubric/command/hybrid 收敛判据 + 死循环兜底 +
+  checkpoint per-5-rounds + GoalPanel + 3-way Tab 焦点 + headless `chovy goal`
+  退出码 + 36/36 smoke）。
 
-**未实现**：记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（Phase F–I）。
+**未实现**：记忆/checkpoint（TMT）、上下文管理（SCW）、技能图（CSG）、端到端集成（Phase G–I）。
 
 最新 A-E 复验报告见 [`complete/phase-a-e-acceptance.md`](./complete/phase-a-e-acceptance.md)；A-D 报告保留在 [`complete/phase-a-d-acceptance.md`](./complete/phase-a-d-acceptance.md)；A-C 旧报告在 [`complete/phase-a-c-acceptance.md`](./complete/phase-a-c-acceptance.md)。
 
