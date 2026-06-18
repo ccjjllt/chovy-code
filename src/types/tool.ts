@@ -131,6 +131,82 @@ export interface HookEngine {
  */
 export type SpawnFn = (req: unknown) => Promise<unknown>;
 
+// ── Step-11 meta-tool plumbing ─────────────────────────────────────────────
+
+/**
+ * A single todo entry (step-11 `TodoWrite`). Mirrors cc-haha's TodoWrite
+ * shape so users moving between agents see the same fields. The `id` is
+ * optional in the wire schema; when absent the tool assigns by index.
+ */
+export interface TodoItem {
+  /** Optional caller-supplied id; absent ⇒ positional by array index. */
+  id?: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  priority: "low" | "medium" | "high";
+}
+
+/**
+ * Per-session state the meta tools read/write (step-11).
+ *
+ * `todoList` is the agent's own task list — the model writes it via
+ * `TodoWrite` and the UI (step-22 / step-30) renders a live panel. Kept on
+ * `ToolContext.session` rather than a global so sub-agents (step-18) each
+ * get their own list and so tests can inject a fresh store.
+ */
+export interface ToolSession {
+  /** Agent-maintained todo list. Undefined ⇒ "no list yet" (read as empty). */
+  todoList?: TodoItem[];
+}
+
+/**
+ * One selectable option for `AskUserQuestion` (step-11).
+ */
+export interface AskUserOption {
+  label: string;
+  description: string;
+  preview?: string;
+}
+
+/**
+ * One question the agent wants to surface to the user (step-11).
+ */
+export interface AskUserQuestionSpec {
+  question: string;
+  /** Short chip label; UI truncates at ~12 chars. */
+  header: string;
+  multiSelect?: boolean;
+  options: AskUserOption[];
+}
+
+/**
+ * Answer payload returned by the UI layer (step-22). For single-select the
+ * value is the chosen `label` (or `"Other"` + free text); for multi-select
+ * it's a comma-joined list of labels.
+ */
+export type AskUserAnswer = Record<string, string>;
+
+/**
+ * Interactive prompt callback injected by the UI layer (step-22). The meta
+ * tool `AskUserQuestion` delegates to this when present; when absent the
+ * tool returns `INTERNAL` pointing at step-22 so the model learns the UI
+ * isn't wired yet instead of hanging.
+ *
+ * TODO step-22: the Ink `AskUserOverlay` supplies a real implementation.
+ */
+export type AskUserFn = (
+  questions: AskUserQuestionSpec[],
+  signal: AbortSignal,
+) => Promise<AskUserAnswer>;
+
+/**
+ * Whether the host process can render an interactive prompt. The CLI sets
+ * this from `process.stdin.isTTY` (see step-05's `startRepl`); non-interactive
+ * (`chat "..."`, `goal`, sub-agents) report `false` so `AskUserQuestion`
+ * refuses cleanly per `docs/step-11-meta-tools.md §"风险"`.
+ */
+export type IsInteractiveFn = () => boolean;
+
 /**
  * Runtime context handed to a tool's `run` (and `checkPermissions`) in v2.
  *
@@ -157,6 +233,32 @@ export interface ToolContext {
   sessionId: string;
   /** Project id (hash of cwd). */
   projectId: string;
+
+  // ── step-11 additions (all optional; safe for step-06 call sites) ─────────
+
+  /**
+   * Per-session state for the meta tools (`TodoWrite`). The agent loop
+   * (step-16) injects a fresh object per agent run; absent ⇒ meta tools fall
+   * back to a module-level store so they work today and tests stay isolated.
+   */
+  session?: ToolSession;
+
+  /**
+   * Interactive-prompt callback for `AskUserQuestion`. Absent ⇒ the tool
+   * refuses with `INTERNAL` pointing at step-22 (the Ink overlay that wires
+   * this up). The CLI additionally gates on `isInteractive` below.
+   *
+   * TODO step-22: `AskUserOverlay` supplies the real implementation.
+   */
+  askUser?: AskUserFn;
+
+  /**
+   * Reports whether the host process can render an interactive prompt.
+   * Defaults to checking `process.stdin.isTTY`; sub-agents (step-18) and the
+   * one-shot `chat "..."` path report `false` so `AskUserQuestion` refuses
+   * instead of deadlocking waiting for stdin.
+   */
+  isInteractive?: IsInteractiveFn;
 }
 
 // ── Result ─────────────────────────────────────────────────────────────────

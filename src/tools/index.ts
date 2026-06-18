@@ -9,6 +9,12 @@ import {
 } from "./fs/index.js";
 import { bashTool } from "./exec/index.js";
 import { webFetchTool, webSearchTool } from "./web/index.js";
+import {
+  todoWriteTool,
+  askUserQuestionTool,
+  skillTool,
+  agentTool,
+} from "./meta/index.js";
 
 /**
  * Built-in tool registration (step-06).
@@ -32,6 +38,12 @@ registerTool(bashTool, { namespace: "exec" });
 // step-10: web tools (WebFetch / WebSearch).
 registerTool(webFetchTool, { namespace: "web" });
 registerTool(webSearchTool, { namespace: "web" });
+
+// step-11: meta tools (TodoWrite / AskUserQuestion / Skill / Agent).
+registerTool(todoWriteTool, { namespace: "meta" });
+registerTool(askUserQuestionTool, { namespace: "meta" });
+registerTool(skillTool, { namespace: "meta" });
+registerTool(agentTool, { namespace: "meta" });
 
 // ── Public surface ─────────────────────────────────────────────────────────
 
