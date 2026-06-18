@@ -27,6 +27,7 @@ import {
   createSwarmBus,
   createGlobalBudget,
   createLimiter,
+  type JudgedAggregate,
 } from "../src/swarm/index.js";
 import { _resetSubAgentPoolForTesting } from "../src/agent/index.js";
 import type {
@@ -424,12 +425,32 @@ function installStubs(
   _resetSubAgentPoolForTesting();
 }
 
-// ── 9. judge.enabled tolerated (step-21 stub) ──────────────────────────────
+// ── 9. judge.enabled wired (step-21) — inject a stub judge via deps ─────────
+// Step-21 ships the real judge; this test stays offline by injecting a stub
+// `runJudge` through `DispatchDeps`. We assert the router (a) calls it when
+// `judge.enabled`, (b) folds judge cost into totalCostUSD, and (c) forwards
+// the verdict verbatim. The real judge's provider/parse paths are covered by
+// scripts/smoke-step21.ts.
 {
   _resetSubAgentPoolForTesting();
   const restore = installStubs({
     openai: makeStubProvider("ok", "openai"),
   });
+
+  let judgeCalled = false;
+  const stubJudge = async (): Promise<JudgedAggregate> => {
+    judgeCalled = true;
+    return {
+      schemaName: "consensus",
+      ok: true,
+      data: { agreement: "strong", final_answer: "stubbed verdict" },
+      rawText: '{"agreement":"strong",...}',
+      costUSD: 0.0123,
+      modelUsed: "stub-judge-model",
+      providerUsed: "openai",
+      attempts: 0,
+    };
+  };
 
   const out = await dispatch(
     {
@@ -441,10 +462,34 @@ function installStubs(
       judge: { enabled: true, schema: "consensus" },
     },
     makeParentCtx(),
+    { runJudge: stubJudge },
   );
 
   check("judge: dispatch succeeds", out.results.length === 2);
-  check("judge: judgement undefined (step-21 stub)", out.judgement === undefined);
+  check("judge: runJudge was called", judgeCalled);
+  check("judge: judgement present", out.judgement !== undefined);
+  check("judge: judgement.ok true", out.judgement?.ok === true);
+  check("judge: judgement.schemaName consensus", out.judgement?.schemaName === "consensus");
+  check("judge: judge cost folded into total", out.totalCostUSD >= 0.0123, `total=${out.totalCostUSD}`);
+
+  // judge disabled → no judge call, judgement undefined
+  let judgeCalled2 = false;
+  const out2 = await dispatch(
+    {
+      prompts: [{ id: "c", prompt: "task c", provider: "openai" }],
+      parallelism: 1,
+      judge: { enabled: false },
+    },
+    makeParentCtx(),
+    {
+      runJudge: async (): Promise<JudgedAggregate> => {
+        judgeCalled2 = true;
+        return { schemaName: "consensus", ok: false, rawText: "", costUSD: 0, modelUsed: "x", providerUsed: "openai", attempts: 0 };
+      },
+    },
+  );
+  check("judge: disabled → not called", !judgeCalled2);
+  check("judge: disabled → judgement undefined", out2.judgement === undefined);
 
   restore.forEach((r) => r());
   _resetSubAgentPoolForTesting();

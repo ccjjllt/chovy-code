@@ -57,3 +57,19 @@ export {
   type SwarmPoolOptions,
   type SwarmSpawnRequest,
 } from "./pool.js";
+
+// step-21 — judge aggregator
+export {
+  runJudge,
+  tryFixJSON,
+  type JudgedAggregate,
+  type RunJudgeOptions,
+} from "./judge.js";
+export {
+  ConsensusSchema,
+  CompareSchema,
+  RankSchema,
+  CustomMeta,
+  schemaFor,
+  type JudgeSchemaNameLike,
+} from "./schemas.js";

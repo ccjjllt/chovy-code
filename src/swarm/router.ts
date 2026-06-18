@@ -17,9 +17,11 @@
  *   4. collect handles into result slots keyed by original index.
  *   5. poll the handles: on each tick, recompute cumulative cost against
  *      `GlobalBudget`; on trip, `swarmPool.cancelAll()` the unfinished set.
- *   6. if `judge.enabled`, hand the collected results to step-21's judge.
- *      (TODO step-21: today `judgement` stays `undefined` and the field is
- *      reserved — see `JUDGE_NOT_IMPLEMENTED`.)
+ *   6. if `judge.enabled`, hand the collected results to step-21's judge
+ *      (`runJudge` from `src/swarm/judge.ts`). The judge's own abort signal
+ *      is the dispatch's local AC, so cancelling the dispatch cancels an
+ *      in-flight judge too. Judge cost is folded into `totalCostUSD`; judge
+ *      failure does NOT change `stopReason` (§18) — it rides `judgement.ok`.
  *   7. emit one `swarm.dispatch` telemetry event.
  *   8. return `DispatchOutput`.
  *
@@ -57,6 +59,7 @@ import {
   type SwarmBus,
 } from "./progress.js";
 import { createSwarmPool, type SwarmPool } from "./pool.js";
+import { runJudge, type JudgedAggregate } from "./judge.js";
 
 // ── public types ───────────────────────────────────────────────────────────
 
@@ -120,8 +123,13 @@ export interface DispatchChildResult {
 export interface DispatchOutput {
   spawnedIds: string[];
   results: DispatchChildResult[];
-  /** step-21 fills this; `undefined` until the judge ships. */
-  judgement?: unknown;
+  /**
+   * Step-21 judge verdict. Present iff `judge.enabled` was true (and the
+   * dispatch wasn't cancelled before the judge ran). `judgement.ok === false`
+   * means the judge ran but couldn't produce schema-valid output — the raw
+   * results are still in `results[]`. `undefined` when judge was disabled.
+   */
+  judgement?: JudgedAggregate;
   totalCostUSD: number;
   stopReason: "final" | "budgetExceeded" | "cancelled";
 }
@@ -133,6 +141,12 @@ export interface DispatchDeps {
   bus?: SwarmBus;
   /** Inject the limiter factory (tests assert the active-count invariant). */
   limiter?: (concurrency: number) => ConcurrencyLimiter;
+  /**
+   * Inject the judge runner (tests pass a stub that returns a canned
+   * `JudgedAggregate` without hitting a provider). When absent the router
+   * calls the real `runJudge` from `src/swarm/judge.ts`.
+   */
+  runJudge?: typeof runJudge;
 }
 
 // ── constants ──────────────────────────────────────────────────────────────
@@ -172,19 +186,19 @@ export function toAgentRole(role: DispatchRole | undefined): AgentRole {
   }
 }
 
-// ── judge placeholder ──────────────────────────────────────────────────────
+// ── judge ──────────────────────────────────────────────────────────────────
 
 /**
- * Step-21 owns the judge aggregator. Until it lands, a `judge.enabled:true`
- * dispatch still succeeds — the judge step is skipped and `judgement` stays
- * `undefined`. We log once per dispatch so the omission is observable in
- * `chovy log tail` without throwing (the main agent gets its raw results).
+ * Step-21's judge aggregator. The router calls `runJudge` when
+ * `judge.enabled` is true, forwarding the dispatch's local AbortController so
+ * a cancelled dispatch cancels an in-flight judge too. Judge failure is
+ * non-fatal (§18): it lands as `judgement.ok === false` and the raw results
+ * still return; `stopReason` is unaffected.
  *
- * TODO step-21: replace this stub with `runJudge(results, judgeOpts)` from
- * `src/swarm/judge.ts`.
+ * The judge's USD spend is added to `totalCostUSD` so the dispatch's reported
+ * cost is inclusive. The judge emits NO telemetry of its own (§18: the router
+ * is the single `swarm.dispatch` source).
  */
-const JUDGE_NOT_IMPLEMENTED =
-  "judge aggregator not implemented (step-21); returning raw results";
 
 // ── dispatch ───────────────────────────────────────────────────────────────
 
@@ -404,15 +418,39 @@ export async function dispatch(
     if (h) rollup(i, h);
   }
 
-  const totalCostUSD = results.reduce((sum, r) => sum + r.costUSD, 0);
+  const baseCostUSD = results.reduce((sum, r) => sum + r.costUSD, 0);
+  // Judge cost is added below (after the judge runs) so `totalCostUSD` is
+  // inclusive of the judge call. `let` because the judge block may mutate it.
+  let totalCostUSD = baseCostUSD;
 
-  // ── judge (step-21 placeholder) ─────────────────────────────────────────
+  // ── judge (step-21) ───────────────────────────────────────────────────────
   const judgeOpts = normalizeJudge(input.judge);
-  let judgement: unknown;
+  let judgement: JudgedAggregate | undefined;
   if (judgeOpts.enabled) {
-    // TODO step-21: `judgement = await runJudge(results, judgeOpts, parentCtx);`
-    logger.warn(JUDGE_NOT_IMPLEMENTED, { schema: judgeOpts.schema });
-    judgement = undefined;
+    // Forward the dispatch's local AC so a cancelled dispatch cancels the
+    // judge too. The judge wraps this in its own local AC (AGENTS.md §9) so
+    // it never shares the signal object; an abort lands as
+    // `judgement.ok === false / reason:'cancelled'` rather than throwing.
+    if (ac.signal.aborted) {
+      // Dispatch already cancelled — skip the judge call entirely; the main
+      // agent gets the raw (partial) results with stopReason='cancelled'.
+      logger.debug("dispatch: judge skipped (dispatch aborted)", {
+        schema: judgeOpts.schema,
+      });
+    } else {
+      const judgeFn = deps.runJudge ?? runJudge;
+      judgement = await judgeFn(results, { judge: judgeOpts, abortSignal: ac.signal }, parentCtx);
+      // Fold judge cost into the dispatch total so the reported spend is
+      // inclusive (the judge is part of the dispatch's work).
+      totalCostUSD += judgement.costUSD;
+      if (!judgement.ok) {
+        logger.warn("dispatch: judge did not produce a valid verdict", {
+          schema: judgement.schemaName,
+          reason: judgement.reason,
+          attempts: judgement.attempts,
+        });
+      }
+    }
   }
 
   return {

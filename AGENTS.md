@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）已完成构建并通过复验；Phase E 进行中——step-18（子 Agent 运行时）+ step-20（SwarmR dispatch 核心）已落地，下一步 step-19（内置角色）/ step-21（Judge）/ step-22（UI）**。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）已完成构建并通过复验；Phase E 进行中——step-18（子 Agent 运行时）+ step-20（SwarmR dispatch 核心）+ step-21（Judge 聚合）已落地，下一步 step-19（内置角色）/ step-22（UI）**。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -64,7 +64,7 @@ chovy-code/
 
 **已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 并发限流 + 全局预算熔断 + 进度/生命周期 bus）。
 各 Phase 的详细产物与验收结论见 `docs/complete/` 下对应报告；本文不逐步罗列。
-**未实现**：Judge 聚合（step-21）、子 Agent UI 面板（step-22）、记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（对应 Phase E 尾 + F–I）。
+**未实现**：子 Agent UI 面板（step-22）、记忆/checkpoint（TMT）、目标循环（/goal）、上下文管理（SCW）、技能图（CSG）、端到端集成（对应 Phase E 尾 + F–I）。
 
 ---
 
@@ -401,7 +401,7 @@ chovy log tail                   # 看 telemetry
 
 ## 18. Phase E 不变量（Sub-Agent + SwarmR）
 
-> Phase E（step-18–22）产物/验收见 `docs/complete/step-20-swarm-router.md`。本节固化 step-20 SwarmR 跨步骤生效的不变量；step-21（Judge）/ step-22（UI）落地后追加对应小节。
+> Phase E（step-18–22）产物/验收见 `docs/complete/step-20-swarm-router.md`、`docs/complete/step-21-judge-aggregator.md`。本节固化 step-20/step-21 跨步骤生效的不变量；step-22（UI）落地后追加对应小节。
 
 **单源规约**（接 §16/§17 同模式）：
 - `DispatchRole` / `JudgeSchemaName` → `src/swarm/router.ts`（step-20 冻结）；wire schema 的 `explore/plan/verify/critic/custom` 与 runtime `AgentRole`（`explorer/planner/...`）经 `toAgentRole()` 映射，**不**重声明 union。
@@ -436,8 +436,14 @@ chovy log tail                   # 看 telemetry
 - 单个子 agent 失败**不**中断兄弟：其结果 slot `ok:false` + `status:'failed'`，judge（若启用）被告知"该角度无有效结论"。
 - 只有全局 budget 超限 / dispatch-level abort 取消整个 fan-out（`stopReason` 非_final）；单个失败保持 `stopReason='final'`。
 
-**Judge 留桩不变量（step-21 前）**：
-- `judge.enabled:true` 时 dispatch 仍成功——judge 步骤跳过，`judgement` 留 `undefined`，`logger.warn` 一条（可观测但不抛）。`TODO step-21` 标记在 `router.ts` 的 `JUDGE_NOT_IMPLEMENTED`。
-- step-21 落地时替换为 `runJudge(results, judgeOpts, parentCtx)`，返回 `JudgedAggregate`；**不**新增 `stopReason`，judge 失败走 `judgement` 字段 + `ok=false`。
+**Judge 聚合不变量（step-21）**：
+- **judge 不是 telemetry 源**：judge 的 cost 折进 dispatch 的 `totalCostUSD`（router 在 judge 返回后 `+= judgement.costUSD`），但 judge **不** emit 任何 telemetry 事件（`swarm.dispatch` 仍是单源，§17）。`CostTracker` 实例 `telemetry:false`。
+- **judge 失败不致命**：`judge.enabled:true` 时 dispatch 仍成功——judge 失败走 `judgement.ok=false` + `reason`（`parse`/`cancelled`/`no-provider`），`stopReason` **不**新增（§18 冻结：`final`/`budgetExceeded`/`cancelled`）。主 agent 仍拿到原始 `results[]`。
+- **judge 取消独立 signal**：judge 用**本地** AbortController 包装 dispatch 的 `ac.signal`（§9 红线：不共享 dispatch signal 对象）。dispatch 已 abort 时 router 跳过 judge 调用（`judgement` 留 `undefined`）。
+- **provider 选择 fallback 链**：caller `judge.provider/model` 覆盖 → 长上下文 fallback 链（Kimi-K2 → GLM-4.5 → DeepSeek-V3 → Gemini-2.5-pro → Claude Sonnet 4，均经 `hasSecret` 门控）→ 父 provider（也经 `hasSecret`）。全部不可用 → `ok=false / reason:'no-provider'`，**不**抛。
+- **schema 单源**：`ConsensusSchema` / `CompareSchema` / `RankSchema` / `CustomMeta` → `src/swarm/schemas.ts`（step-21 冻结）。`judge.ts` 的 `schemaFor(name, customSchema)` 是唯一选择入口；`router.ts` 的 `JudgeSchemaName` union **不**重声明。
+- **自我修复 ≤1 次**：第一次 `safeParse` 失败 → 用 repair prompt（echo 上次 raw + zod issues）重试一次；仍失败 → `ok=false / reason:'parse'`，`rawText` 保留供调试。`tryFixJSON`（去 ``` 包裹 / 截首尾 prose / 补缺括号）在每次 parse 前运行。
+- **大 N 截断**：每个 agent content 截断到 ≤ 4 KB（首 2 KB + 尾 2 KB），prompt 中标注已截断。避免 N 个子 agent 完整 transcript 撑爆 judge provider ctx。
+- **`DispatchDeps.runJudge?` 注入**（测试用）：router 接受 `deps.runJudge` 覆盖真实 `runJudge`，离线 smoke 注入 stub verifier。生产路径走真实 `runJudge`。
 
 **per-prompt maxTokens 遗留**：wire schema 有 `maxTokens`，但 `SpawnInput` 当前只透传 `maxRounds`（step-18 pool 未实现 per-child token cap）。router 里 `TODO step-18 follow-up` 注释；字段保留在 schema 不删（step-20 spec 明列）。后续 step-18 扩展 `SpawnInput.maxTokens` 时 router 取消 TODO 即可。

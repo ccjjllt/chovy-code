@@ -117,7 +117,9 @@ const argsSchema = z.object({
     .max(PROMPT_MAX)
     .describe("Sub-agent prompts. Results return in this order."),
   judge: judgeSchema.describe(
-    "Optional judge aggregator (step-21). Skipped today; `judgement` stays undefined.",
+    "Optional judge aggregator (step-21). When enabled, a referee model " +
+      "constrains the N results to a zod schema (consensus/compare/rank/custom) " +
+      "and returns a structured `JudgedAggregate` in `judgement`.",
   ),
   parallelism: z
     .number()
@@ -166,8 +168,10 @@ export const dispatchTool: Tool<typeof argsSchema> = {
       "- `budgetUSD`: dispatch-wide cap; on breach the router cancels every " +
       "still-running child and returns stopReason='budgetExceeded'.\n" +
       "- `judge`: optional step-21 aggregator (consensus/compare/rank/custom). " +
-      "Today the judge is reserved — `judgement` stays undefined and results " +
-      "come back raw.\n\n" +
+      "A referee model runs after the fan-out, constrains the results to the " +
+      "chosen zod schema, and returns a `JudgedAggregate` (ok/data/rawText/" +
+      "costUSD/modelUsed). Judge failure is non-fatal — `judgement.ok=false` " +
+      "and the raw results still return.\n\n" +
       "Failure propagation: a single child failing does NOT abort siblings " +
       "(its result slot is ok=false). Only the global budget or a dispatch " +
       "abort cancels the whole fan-out.\n\n" +
@@ -305,9 +309,21 @@ function summarizeDispatch(out: DispatchOutput): string {
     );
   }
   if (out.judgement !== undefined) {
-    lines.push(`judge: ${JSON.stringify(out.judgement)}`);
+    const j = out.judgement;
+    if (j.ok) {
+      lines.push(
+        `judge: OK ${j.schemaName} ${j.providerUsed}/${j.modelUsed} ` +
+          `$${j.costUSD.toFixed(4)} (attempts=${j.attempts})`,
+      );
+      lines.push(`judge.data: ${JSON.stringify(j.data)}`);
+    } else {
+      lines.push(
+        `judge: FAIL ${j.schemaName} reason=${j.reason ?? "?"} ` +
+          `${j.providerUsed}/${j.modelUsed} $${j.costUSD.toFixed(4)}`,
+      );
+    }
   } else {
-    lines.push("judge: (skipped — step-21 not implemented)");
+    lines.push("judge: (disabled)");
   }
   return lines.join("\n");
 }
