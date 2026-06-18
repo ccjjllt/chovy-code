@@ -1,67 +1,43 @@
 import { registerProvider } from "./registry.js";
 import { openaiProvider } from "./openai.js";
-import { scaffoldProvider } from "./scaffold.js";
+import { anthropicProvider } from "./anthropic.js";
+import { geminiProvider } from "./gemini.js";
+import { deepseekProvider } from "./deepseek.js";
+import { glmProvider } from "./glm.js";
+import { kimiProvider } from "./kimi.js";
+import { minimaxProvider } from "./minimax.js";
 
-// --- Register every known provider --------------------------------------
-// Real adapters (like openaiProvider) implement the wire protocol.
-// Scaffold adapters below are placeholders to be replaced one-by-one.
+/**
+ * Step-17 wiring.
+ *
+ * All seven providers ship real adapters now (the step-06 scaffolds are
+ * gone). Registration order is alphabetical for stable diffs; the
+ * registry uses a `Map` so order has no semantic effect.
+ */
 
+registerProvider(anthropicProvider);
+registerProvider(deepseekProvider);
+registerProvider(geminiProvider);
+registerProvider(glmProvider);
+registerProvider(kimiProvider);
+registerProvider(minimaxProvider);
 registerProvider(openaiProvider);
 
-registerProvider(
-  scaffoldProvider({
-    id: "anthropic",
-    label: "Anthropic Claude",
-    envKey: "ANTHROPIC_API_KEY",
-    defaultModel: "claude-sonnet-4-5",
-  }),
-);
-
-registerProvider(
-  scaffoldProvider({
-    id: "gemini",
-    label: "Google Gemini",
-    envKey: "GEMINI_API_KEY",
-    defaultModel: "gemini-2.5-pro",
-  }),
-);
-
-registerProvider(
-  scaffoldProvider({
-    id: "deepseek",
-    label: "DeepSeek",
-    envKey: "DEEPSEEK_API_KEY",
-    defaultModel: "deepseek-chat",
-  }),
-);
-
-registerProvider(
-  scaffoldProvider({
-    id: "minimax",
-    label: "MiniMax",
-    envKey: "MINIMAX_API_KEY",
-    defaultModel: "abab6.5s-chat",
-  }),
-);
-
-registerProvider(
-  scaffoldProvider({
-    id: "glm",
-    label: "Zhipu GLM",
-    envKey: "GLM_API_KEY",
-    defaultModel: "glm-4-plus",
-  }),
-);
-
-registerProvider(
-  scaffoldProvider({
-    id: "kimi",
-    label: "Moonshot Kimi",
-    envKey: "KIMI_API_KEY",
-    defaultModel: "moonshot-v1-32k",
-  }),
-);
-
-// Re-export the registry accessors for convenience.
+// Public surface ────────────────────────────────────────────────────────────
 export { getProvider, listProviders } from "./registry.js";
 export { scaffoldProvider } from "./scaffold.js";
+export {
+  CAPS,
+  getCapability,
+  type ProviderCapabilitySpec,
+  type ProviderFamily,
+  type ToolSupportMode,
+} from "./capabilities.js";
+export {
+  toOpenAITools,
+  toAnthropicTools,
+  toGeminiTools,
+  toJsonModePromptInjection,
+  parseJsonModeToolCalls,
+} from "./toolFormat.js";
+export { parseSSE, mergeDelta, finalizeCompletion, newAccumulator } from "./streaming.js";

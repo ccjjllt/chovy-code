@@ -52,6 +52,26 @@ export interface ProviderInfo {
   capabilities?: ProviderCapabilities;
 }
 
+/**
+ * Per-tool wire spec passed to providers (step-17 additive).
+ *
+ * The query engine (step-16) runs ATP per round (`describeTools`) and gets
+ * back a `DescribedTool[]` with the lean/full description picked for the
+ * current budget. Step-17 plumbs that array through here so providers can
+ * emit it verbatim into their native tool schema (OpenAI `tools`, Anthropic
+ * `tools`, Gemini `functionDeclarations`, …) without re-running the
+ * allocator. Field names mirror `DescribedTool` exactly so the engine can
+ * pass the array through unchanged. Providers that only see `tools: string[]`
+ * (older callers, sub-agents that haven't been ported) fall back to looking
+ * the schema up via the tool registry with a lean default description.
+ */
+export interface ProviderToolSpec {
+  name: string;
+  description: string;
+  schemaJson: unknown;
+  level?: "lean" | "full";
+}
+
 /** Options passed to a provider when making a request. */
 export interface ProviderRequestOptions {
   model: string;
@@ -59,6 +79,13 @@ export interface ProviderRequestOptions {
   systemPrompt?: string;
   /** Allowed tools, by name. The provider translates these into its own format. */
   tools?: string[];
+  /**
+   * ATP-described tool specs (step-17). When present takes precedence over
+   * `tools: string[]` — the provider emits `toolSpecs` directly without
+   * re-running the ATP allocator. Optional and additive: providers MUST
+   * still handle the `tools: string[]` fallback for older callers.
+   */
+  toolSpecs?: ProviderToolSpec[];
   temperature?: number;
   maxTokens?: number;
   /** Optional abort signal for cancellation/timeouts. */

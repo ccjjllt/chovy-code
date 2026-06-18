@@ -1,21 +1,15 @@
-import type {
-  ChatCompletion,
-  Provider,
-  ProviderInfo,
-  ProviderRequestOptions,
-} from "../types/index.js";
-import { getSecret } from "../config/secrets.js";
-import { ChovyError } from "../types/errors.js";
-
 /**
- * Reference OpenAI adapter. This is a thin scaffold: it wires up the
- * ProviderInfo and validates the API key, leaving the actual network call
- * to be filled in. The shape demonstrates the contract every adapter
- * follows, so the other six providers can be modelled on it.
+ * OpenAI adapter (step-17).
  *
- * TODO: implement `complete` against POST /v1/chat/completions, and
- *       `stream` against the same endpoint with stream:true.
+ * Real implementation backed by the OpenAI-compat factory. Hits the
+ * standard `/v1/chat/completions` endpoint with `Authorization: Bearer`
+ * and the `gpt` SSE family. Honours `OPENAI_BASE_URL` so users can route
+ * through a proxy / Azure shim without rebuilding.
  */
+
+import type { Provider, ProviderInfo } from "../types/index.js";
+import { createOpenAICompatProvider } from "./openaiCompat.js";
+
 const INFO: ProviderInfo = {
   id: "openai",
   label: "OpenAI",
@@ -25,39 +19,11 @@ const INFO: ProviderInfo = {
   supportsTools: true,
 };
 
-function key(): string | undefined {
-  return getSecret(INFO.id);
-}
-
-export const openaiProvider: Provider = {
+export const openaiProvider: Provider = createOpenAICompatProvider({
   info: INFO,
-
-  assertReady(): void {
-    if (!key()) {
-      throw new ChovyError(
-        "PROVIDER_NOT_READY",
-        `OpenAI API key missing. Set ${INFO.envKey} in your environment or write ~/.chovy/secrets/${INFO.id}.`,
-        undefined,
-        { provider: INFO.id, envKey: INFO.envKey },
-      );
-    }
-  },
-
-  async complete(opts: ProviderRequestOptions): Promise<ChatCompletion> {
-    this.assertReady();
-    const model = opts.model ?? INFO.defaultModel;
-    // TODO: fetch(`${process.env.OPENAI_BASE_URL ?? "https://api.openai.com"}/v1/chat/completions`, ...)
-    void opts;
-    return {
-      content: `[openai:${model}] provider.complete() not yet implemented`,
-      toolCalls: [],
-    };
-  },
-
-  async *stream(opts) {
-    this.assertReady();
-    const completion = await this.complete(opts);
-    yield completion.content;
-    yield completion;
-  },
-};
+  baseUrl: () => process.env.OPENAI_BASE_URL ?? "https://api.openai.com",
+  path: "/v1/chat/completions",
+  family: "gpt",
+  maxOutputTokens: 16_384,
+  auth: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
+});

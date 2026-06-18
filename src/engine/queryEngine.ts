@@ -365,6 +365,12 @@ export class QueryEngine {
           temperature: opts.temperature,
           maxTokens: opts.maxTokens,
           tools: described.map((d) => d.name),
+          toolSpecs: described.map((d) => ({
+            name: d.name,
+            description: d.description,
+            schemaJson: d.schemaJson,
+            level: d.level,
+          })),
         };
 
         const round = rounds; // capture for closures
