@@ -23,3 +23,12 @@ logs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Windows reserved device names — `nul` / `con` / `prn` / `aux` can be
+# created as stray 0-byte files by an accidental `> nul` redirect from a
+# non-cmd shell (git-bash / wsl treat `nul` as a literal filename). They
+# cannot be deleted with plain `rm`; ignore them so they never get tracked.
+nul
+con
+prn
+aux

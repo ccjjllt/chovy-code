@@ -349,9 +349,14 @@ export class CheckpointCoordinator {
     // 11. Detach abort listener.
     input.parentSignal?.removeEventListener?.("abort", onAbort);
 
-    // TODO step-24/25: when MemoryStore lands, parse the checkpoint into
-    // MemoryRecord(s) and call `memoryStore.upsertFromCheckpointFile(latest)`
-    // here. Skipped today — store API is not yet frozen.
+    // NOTE: checkpoint → MemoryStore indexing happens via step-24's
+    // file-primary sync path, NOT a direct upsert here. `syncFromFiles`
+    // treats `checkpoints/*.md` as a layer=checkpoint source and parses +
+    // upserts them (verified by smoke-step26 §13). The filesystem is the
+    // primary source; the store is a derived index (step-24 §文件 ↔ DB 同步),
+    // so the coordinator does not need to upsert again after writing. A
+    // direct call here would only be a micro-optimisation (skip one mtime
+    // probe on the next sync) — left to step-25/27 if the hot path needs it.
 
     if (writeError) {
       return {

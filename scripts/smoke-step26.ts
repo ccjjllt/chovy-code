@@ -551,6 +551,104 @@ console.log("=== Step-26 checkpoint-writer smoke ===\n");
   );
 }
 
+// ── 13. step-24 ↔ step-26 integration: checkpoint → memory store searchable ─
+//
+// The CheckpointCoordinator writes `checkpoints/latest.md`. Per step-24 §文件
+// ↔ DB 同步, `syncFromFiles` treats `checkpoints/*.md` as a *source* and
+// indexes them into the MemoryStore. This case verifies that bridge end-to-
+// end (offline): a coordinator-produced checkpoint (via the fallback path,
+// which is deterministic) lands in the store and is FTS-searchable with the
+// correct `layer=checkpoint`. Without this assertion the two halves of Phase
+// G are each green in isolation but their integration is unverified — the
+// real value of TMT is that an agent can recall what a prior checkpoint
+// recorded.
+{
+  _resetCheckpointCoordinatorForTesting();
+  // Use a fresh project cwd so the store starts empty and we don't pick up
+  // stray smoke fixtures written by §2/§8 above.
+  const intCwd = join(TMP_HOME, "step26-integ-proj");
+  mkdirSync(intCwd, { recursive: true });
+  await ensureProjectDirs(intCwd);
+
+  const coord = new CheckpointCoordinator({
+    pool: {
+      async spawn() {
+        throw new Error("smoke: stub pool refuses spawn (force fallback)");
+      },
+      list() { return []; },
+      get() { return undefined; },
+      async cancel() {},
+      async cancelAll() {},
+      activeCount() { return 0; },
+      reset() {},
+    },
+  });
+
+  const wrote = await coord.maybeCheckpoint("manual", {
+    cwd: intCwd,
+    objective: "phase G acceptance: verify checkpoint lands in memory store",
+    provider: "openai",
+    recentMessages: [
+      { role: "user", content: "we use bun:sqlite for the memory store" },
+      { role: "assistant", content: "commit messages follow conventional-commits" },
+    ],
+  });
+  check(
+    "13a. coordinator wrote latest.md (fallback)",
+    wrote.ok === true && wrote.mode === "fallback",
+    `ok=${wrote.ok} mode=${wrote.mode}`,
+  );
+
+  // Sync the project's memory sources → store. `syncProject` should discover
+  // the checkpoint dir and parse latest.md.
+  const { createMemoryStore, syncProject } = await import("../src/memory/index.js");
+  const store = await createMemoryStore({ cwd: intCwd });
+  const syncRes = await syncProject(intCwd, store);
+  check(
+    "13b. syncProject indexed ≥1 checkpoint file",
+    syncRes.filesReindexed >= 1,
+    `reindexed=${syncRes.filesReindexed}`,
+  );
+  check(
+    "13c. syncProject produced records from the checkpoint",
+    syncRes.records > 0,
+    `records=${syncRes.records}`,
+  );
+
+  // The fallback body injects the recent messages as "Next intended steps"
+  // bullets, so "sqlite" + "conventional" should both FTS-hit.
+  const sqliteHits = await store.search({ text: "sqlite", limit: 20 });
+  check(
+    "13d. checkpoint content FTS-searchable ('sqlite')",
+    sqliteHits.length >= 1,
+    `hits=${sqliteHits.length}`,
+  );
+  check(
+    "13e. matched records tagged layer=checkpoint",
+    sqliteHits.some((r) => r.layer === "checkpoint"),
+    `layers=${sqliteHits.map((r) => r.layer).join(",")}`,
+  );
+
+  const convHits = await store.search({ text: "conventional", limit: 20 });
+  check(
+    "13f. checkpoint content FTS-searchable ('conventional')",
+    convHits.length >= 1,
+    `hits=${convHits.length}`,
+  );
+
+  // The objective string is rendered into the fallback "## Goal" section as a
+  // prose line (not a `- type:` bullet) → it should still be indexed as a
+  // fact (the parser's保底 path). Confirm the objective is retrievable.
+  const goalHits = await store.search({ text: "acceptance", limit: 20 });
+  check(
+    "13g. objective prose retrievable from checkpoint store",
+    goalHits.length >= 1,
+    `hits=${goalHits.length}`,
+  );
+
+  store.close();
+}
+
 // ── Cleanup ────────────────────────────────────────────────────────────────
 console.log(`\n${pass} passed, ${fail} failed`);
 try { rmSync(TMP_HOME, { recursive: true, force: true }); } catch { /* ignore */ }
