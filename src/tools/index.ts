@@ -8,6 +8,7 @@ import {
   grepTool,
 } from "./fs/index.js";
 import { bashTool } from "./exec/index.js";
+import { webFetchTool, webSearchTool } from "./web/index.js";
 
 /**
  * Built-in tool registration (step-06).
@@ -27,6 +28,10 @@ registerTool(grepTool, { namespace: "fs" });
 
 // step-09: bash executor.
 registerTool(bashTool, { namespace: "exec" });
+
+// step-10: web tools (WebFetch / WebSearch).
+registerTool(webFetchTool, { namespace: "web" });
+registerTool(webSearchTool, { namespace: "web" });
 
 // ── Public surface ─────────────────────────────────────────────────────────
 
