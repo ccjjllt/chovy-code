@@ -26,7 +26,6 @@
 import { z } from "zod";
 
 import { logger } from "../../logger/index.js";
-import { emitTelemetry } from "../../telemetry/index.js";
 import type {
   AskUserAnswer,
   AskUserQuestionSpec,
@@ -186,12 +185,6 @@ export const askUserQuestionTool: Tool<typeof argsSchema> = {
 
     // 1. Non-interactive ⇒ refuse cleanly (spec's risk mitigation).
     if (!isInteractive(ctx)) {
-      emitTelemetry({
-        type: "tool.call",
-        tool: "ask_user_question",
-        ok: false,
-        durMs: Date.now() - t0,
-      });
       return {
         ok: false,
         content:
@@ -209,12 +202,6 @@ export const askUserQuestionTool: Tool<typeof argsSchema> = {
 
     // 2. No UI callback wired yet ⇒ refuse pointing at step-22.
     if (!ctx?.askUser) {
-      emitTelemetry({
-        type: "tool.call",
-        tool: "ask_user_question",
-        ok: false,
-        durMs: Date.now() - t0,
-      });
       return {
         ok: false,
         content:
@@ -247,13 +234,6 @@ export const askUserQuestionTool: Tool<typeof argsSchema> = {
       const raw = await ctx.askUser(specs, ctx.abortSignal);
       const answers = normalizeAnswers(args.questions, raw);
 
-      emitTelemetry({
-        type: "tool.call",
-        tool: "ask_user_question",
-        ok: true,
-        durMs: Date.now() - t0,
-      });
-
       // Model-facing content: a compact Q→A render.
       const lines: string[] = ["User answered:"];
       for (const q of args.questions) {
@@ -270,12 +250,6 @@ export const askUserQuestionTool: Tool<typeof argsSchema> = {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn("ask_user_question: UI callback threw", { error: msg });
-      emitTelemetry({
-        type: "tool.call",
-        tool: "ask_user_question",
-        ok: false,
-        durMs: Date.now() - t0,
-      });
       return {
         ok: false,
         content: `ask_user_question: user prompt failed — ${msg}`,

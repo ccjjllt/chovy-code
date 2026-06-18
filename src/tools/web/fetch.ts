@@ -37,7 +37,6 @@ import { isIP } from "node:net";
 import { z } from "zod";
 
 import { logger } from "../../logger/index.js";
-import { emitTelemetry } from "../../telemetry/index.js";
 import type {
   PermissionPreflight,
   Tool,
@@ -461,7 +460,6 @@ export const webFetchTool: Tool<typeof argsSchema> = {
         upstreamSignal?.removeEventListener("abort", onAbort);
         const msg = err instanceof Error ? err.message : String(err);
         logger.warn("web_fetch: network error", { url: upgradedUrl, error: msg });
-        emitTelemetry({ type: "tool.call", tool: "web_fetch", ok: false, durMs: Date.now() - t0 });
         return {
           ok: false,
           content: `Network error fetching ${upgradedUrl}: ${msg}`,
@@ -489,7 +487,6 @@ export const webFetchTool: Tool<typeof argsSchema> = {
           `Call web_fetch again with:\n` +
           `  url: "${fetchRes.redirectUrl}"\n` +
           `  prompt: "${args.prompt.replace(/"/g, '\\"')}"`;
-        emitTelemetry({ type: "tool.call", tool: "web_fetch", ok: true, durMs: Date.now() - t0 });
         return {
           ok: true,
           content: body,
@@ -507,7 +504,6 @@ export const webFetchTool: Tool<typeof argsSchema> = {
       // the status line. We deliberately do not cache failures.
       if (fetchRes.status >= 400) {
         const msg = `HTTP ${fetchRes.status} ${fetchRes.statusText} for ${fetchRes.finalUrl}`;
-        emitTelemetry({ type: "tool.call", tool: "web_fetch", ok: false, durMs: Date.now() - t0 });
         return {
           ok: false,
           content: msg,
@@ -528,7 +524,6 @@ export const webFetchTool: Tool<typeof argsSchema> = {
 
       // Binary / unsupported MIME — refuse with a hint.
       if (!isTextLike(fetchRes.contentType)) {
-        emitTelemetry({ type: "tool.call", tool: "web_fetch", ok: false, durMs: Date.now() - t0 });
         return {
           ok: false,
           content:
@@ -574,8 +569,6 @@ export const webFetchTool: Tool<typeof argsSchema> = {
       prompt: args.prompt,
       signal: ctx?.abortSignal,
     });
-
-    emitTelemetry({ type: "tool.call", tool: "web_fetch", ok: true, durMs: Date.now() - t0 });
 
     return {
       ok: true,

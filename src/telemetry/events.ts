@@ -2,21 +2,17 @@
  * Telemetry event types.
  *
  * Step-03 freezes the event union shape. Later steps will fill in the
- * placeholder cross-module types (AgentRole / PromptShape) once their
- * owning steps land.
+ * placeholder cross-module types (PromptShape) once their owning steps land.
+ *
+ * `AgentRole` is re-exported from `src/types/agent.ts` so we keep one source
+ * of truth. step-03 originally inlined a parallel literal union but the
+ * names diverged (`explore` vs `explorer`) — Phase B verification (2026-06-18)
+ * unified them on `types/agent.ts` to avoid silent role-string mismatches
+ * between telemetry and the relevance scorer / sub-agent runtime.
  */
 
-// TODO step-19: replace with AgentRole exported from src/agent/lifecycle.ts.
-//   We accept `string & {}` so unknown roles still type-check while the real
-//   union is being shaped.
-export type AgentRole =
-  | "main"
-  | "explore"
-  | "plan"
-  | "verify"
-  | "critic"
-  | "checkpoint-writer"
-  | (string & {});
+export type { AgentRole } from "../types/agent.js";
+import type { AgentRole } from "../types/agent.js";
 
 // TODO step-15: replace with PromptShape exported from src/prompts/fingerprint.ts.
 export interface PromptShape {

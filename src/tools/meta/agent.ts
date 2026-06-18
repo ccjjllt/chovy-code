@@ -25,7 +25,6 @@
 import { z } from "zod";
 
 import { logger } from "../../logger/index.js";
-import { emitTelemetry } from "../../telemetry/index.js";
 import type {
   PermissionPreflight,
   Tool,
@@ -122,12 +121,6 @@ export const agentTool: Tool<typeof argsSchema> = {
 
     // No runtime wired yet ⇒ refuse pointing at step-18.
     if (!ctx?.spawnSubAgent) {
-      emitTelemetry({
-        type: "tool.call",
-        tool: "agent",
-        ok: false,
-        durMs: Date.now() - t0,
-      });
       return {
         ok: false,
         content: NOT_READY_MSG,
@@ -148,12 +141,6 @@ export const agentTool: Tool<typeof argsSchema> = {
     // model and forward structuredOutput.
     try {
       const result = await ctx.spawnSubAgent(args);
-      emitTelemetry({
-        type: "tool.call",
-        tool: "agent",
-        ok: true,
-        durMs: Date.now() - t0,
-      });
       const content =
         typeof result === "string"
           ? result
@@ -167,12 +154,6 @@ export const agentTool: Tool<typeof argsSchema> = {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn("agent: spawnSubAgent threw", { error: msg });
-      emitTelemetry({
-        type: "tool.call",
-        tool: "agent",
-        ok: false,
-        durMs: Date.now() - t0,
-      });
       return {
         ok: false,
         content: `agent: sub-agent spawn failed — ${msg}`,

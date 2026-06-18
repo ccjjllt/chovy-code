@@ -46,7 +46,6 @@ import { z } from "zod";
 import { chovySecretsDir } from "../../config/home.js";
 import { safeFsSync } from "../../fs/index.js";
 import { logger } from "../../logger/index.js";
-import { emitTelemetry } from "../../telemetry/index.js";
 import type { PermissionPreflight, Tool, ToolResult } from "../../types/index.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -386,12 +385,6 @@ export const webSearchTool: Tool<typeof argsSchema> = {
       }
 
       const markdown = renderMarkdown(args.query, sel.backend, hits);
-      emitTelemetry({
-        type: "tool.call",
-        tool: "web_search",
-        ok: true,
-        durMs: Date.now() - t0,
-      });
       return {
         ok: true,
         content: markdown,
@@ -412,12 +405,6 @@ export const webSearchTool: Tool<typeof argsSchema> = {
       logger.warn("web_search: backend error", {
         backend: sel.backend,
         error: msg,
-      });
-      emitTelemetry({
-        type: "tool.call",
-        tool: "web_search",
-        ok: false,
-        durMs: Date.now() - t0,
       });
       return {
         ok: false,

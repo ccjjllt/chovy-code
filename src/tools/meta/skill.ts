@@ -20,7 +20,6 @@
 
 import { z } from "zod";
 
-import { emitTelemetry } from "../../telemetry/index.js";
 import type {
   PermissionPreflight,
   Tool,
@@ -92,12 +91,6 @@ export const skillTool: Tool<typeof argsSchema> = {
 
   async run(args: Args): Promise<ToolResult> {
     const t0 = Date.now();
-    emitTelemetry({
-      type: "tool.call",
-      tool: "skill",
-      ok: false,
-      durMs: Date.now() - t0,
-    });
     return {
       ok: false,
       content: NOT_READY_MSG,

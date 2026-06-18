@@ -53,10 +53,10 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 import { logger } from "../../logger/index.js";
-import { emitTelemetry } from "../../telemetry/index.js";
 import type {
   PermissionPreflight,
   Tool,
+  ToolContext,
   ToolResult,
 } from "../../types/index.js";
 
@@ -703,7 +703,7 @@ export const bashTool: Tool<typeof argsSchema> = {
     return evaluateDanger(args.command, parse);
   },
 
-  async run(args: Args): Promise<ToolResult> {
+  async run(args: Args, ctx?: ToolContext): Promise<ToolResult> {
     const t0 = Date.now();
     const expandedCommand = expandHomeRefs(args.command);
     const parse = parseBashCommand(expandedCommand);
@@ -727,7 +727,7 @@ export const bashTool: Tool<typeof argsSchema> = {
       };
     }
 
-    const cwd = args.cwd ?? process.cwd();
+    const cwd = args.cwd ?? ctx?.cwd ?? process.cwd();
     const timeoutMs = args.timeoutMs;
     const useSandbox = sandboxStub.shouldUseSandbox(expandedCommand);
     if (useSandbox) {
@@ -743,6 +743,10 @@ export const bashTool: Tool<typeof argsSchema> = {
         cwd,
         timeoutMs,
         runInBackground: args.runInBackground === true,
+        // Honor a caller-provided abort signal so Ctrl-C / agent cancel
+        // tears the child process down. Sub-agents (step-18) get their
+        // own controller per AGENTS.md §9.
+        abortSignal: ctx?.abortSignal,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -761,12 +765,9 @@ export const bashTool: Tool<typeof argsSchema> = {
       const reason = res.backgrounded
         ? `auto-backgrounded after ${ASSISTANT_BLOCKING_BUDGET_MS / 1000}s`
         : `started in background`;
-      emitTelemetry({
-        type: "tool.call",
-        tool: "bash",
-        ok: true,
-        durMs: res.durMs,
-      });
+      // The agent loop wrapper emits the canonical `tool.call` telemetry
+      // for every tool invocation; tools MUST NOT emit it themselves
+      // (avoids double-counting in step-27 context monitor).
       return {
         ok: true,
         content:
@@ -809,13 +810,6 @@ export const bashTool: Tool<typeof argsSchema> = {
 
     const content =
       summary + (body !== "" ? body : exitOk ? "(no output)" : "(no output)");
-
-    emitTelemetry({
-      type: "tool.call",
-      tool: "bash",
-      ok: exitOk,
-      durMs: res.durMs,
-    });
 
     return {
       ok: exitOk,

@@ -52,15 +52,17 @@ chovy-code/
     ├── logger/               # 结构化 logger
     ├── telemetry/            # 本地 JSONL telemetry sink
     ├── providers/            # registry + openai 参考实现 + 6 个 scaffold
-    ├── tools/                # Tool v2 registry + ATP allocator + echo + fs tools
+    ├── tools/                # Tool v2 registry + ATP allocator + echo + fs / exec / web / meta 工具
     └── types/                # provider / messages / tool 契约
 ```
 
-**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop 与流式 UI 渲染；
+**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop（构造最小 `ToolContext` 并下发到 `tool.run`）与流式 UI 渲染；
 step-01–05 的类型/错误、配置/secrets/features、结构化日志、本地 telemetry、safeFs、CLI 子命令和 REPL 骨架；
-step-06–07 的 Tool Protocol v2、lean/full 描述、工具注册元数据、ATP 预算分配器、`tools.described` telemetry。
-仓库中也已有 step-08 fs tools 源码与完成报告。
-**未实现**：exec/web/meta 真实工具、权限/沙箱、子智能体、记忆、目标循环、上下文管理、技能、所有 provider 的真实网络接线。
+step-06–07 的 Tool Protocol v2、lean/full 描述、工具注册元数据、ATP 预算分配器、`tools.described` telemetry；
+step-08 fs 工具（read/write/edit/glob/grep）；step-09 bash（AST + 双窗截断 + 单槽 hint + 跨平台 spawn + ctx.abortSignal 接通）；
+step-10 web（fetch + search + 自研 htmlToMd + 私网拒绝 + 跨域重定向不跟随 + 15min LRU）；
+step-11 meta（todoWrite / askUserQuestion + skill/agent stub）。Phase B 验收报告见 `docs/complete/step-06-11-phase-b-acceptance.md`。
+**未实现**：权限/沙箱（step-12/14）、hook 引擎（step-13）、QueryEngine（step-16）、子智能体真实运行（step-18/20）、记忆/checkpoint（step-24–28）、目标循环（step-23）、技能图（step-29）、所有非 openai provider 的真实网络接线（step-17）。
 
 ---
 
@@ -304,3 +306,14 @@ chovy log tail                   # 看 telemetry
 - ATP 分配器必须在 `budgetTokens <= 0` 时仍裁掉 lean 描述，不能无视预算注入全部工具。
 - `fullTriggers` / verb 正则匹配前要复位 `lastIndex`，避免带 `g` 的正则造成间歇性漏命中。
 - 验收报告见 `docs/complete/step-06-07-acceptance.md`。
+
+## 17. Phase B 验收追记（step-06–11，2026-06-18）
+
+- step-06–11 已按 `docs/complete/step-06-11-phase-b-acceptance.md` 完成验收追补。
+- **`tool.call` telemetry 单源**：agent loop wrapper 是唯一发射点，工具内部**禁止** emit `{type:"tool.call",...}`。需要更细粒度信息走 `ToolResult.meta`（`durMs / bytes / cmd / filesChanged`）或 `structuredOutput`。step-27 上下文阈值监控、step-30 计数测试都按这个不变量编写。
+- **`AgentRole` 单源**：`src/types/agent.ts` 是唯一定义；`src/telemetry/events.ts` 通过 `export type { AgentRole } from "../types/agent.js"` 复用。step-19 真实化时只动 `types/agent.ts`，`events.ts` / `relevance.ts` / agent loop 自动跟随。**禁止**在 `events.ts` 重新声明字面量。
+- **`ToolContext` 必须由 agent loop 注入**：`runAgent()` 入口构造最小 ctx（`cwd / abortSignal / logger / permissions:{} / hooks:{} / config / sessionId / projectId / session / askUser / isInteractive`），并把 ctx 传给 `tool.run(args, ctx)`。step-12/13/16/22 的扩展应**追加**字段而非替换 ctx。
+- **bash 必须接 `ctx?.abortSignal`**：`execShellCommand` 的 spawn 选项已支持，本步实接。新工具如要做长任务，**必须**透传 `ctx?.abortSignal` 到内部 fetch / spawn / setTimeout。
+- 子 agent（step-18）**必须**为 `ctx.abortSignal` 创建独立 `AbortController`，不能共用父 agent 的 signal（AGENTS.md §9 既有红线，本步在 ctx 模型层面留好接口）。
+- `ask_user_question` 在 `ctx.askUser` 缺席时返回 `INTERNAL → step-22`，在非 TTY 下返回 `TOOL_DENIED`，**绝不**阻塞 stdin；step-22 落地 `AskUserOverlay` 时只接 `runAgent({askUser, isInteractive})`。
+- `todo_write` 的会话 todo 现在通过 `ctx.session.todoList` 存活（agent loop 注入空数组），module-level fallback 仅在裸调（如 smoke 脚本）时启用。

@@ -2,11 +2,15 @@ import { getProvider } from "../providers/index.js";
 import { getTool } from "../tools/index.js";
 import { logger } from "../logger/index.js";
 import { emitTelemetry, getTelemetrySink } from "../telemetry/index.js";
+import { loadConfig } from "../config/index.js";
+import { projectId as deriveProjectId } from "../fs/paths.js";
 import type {
   ChatMessage,
   ProviderId,
   ProviderRequestOptions,
   ToolCall,
+  ToolContext,
+  ToolSession,
 } from "../types/index.js";
 
 const DEFAULT_SYSTEM_PROMPT =
@@ -25,6 +29,20 @@ export interface AgentOptions {
   onToken?: (delta: string) => void;
   /** Called whenever the agent executes a tool. */
   onToolCall?: (name: string, args: unknown) => void;
+  /**
+   * External abort hook — when the host (CLI / REPL) wants to interrupt, it
+   * aborts this signal. The agent loop forwards it to tools through
+   * `ToolContext.abortSignal` so long-running ops (bash / web_fetch) cancel.
+   * Step-16 will expand this into a full cancellation pipeline.
+   */
+  abortSignal?: AbortSignal;
+  /**
+   * Optional `ask_user_question` callback supplied by the UI (step-22). When
+   * absent the meta tool refuses with `INTERNAL` pointing at step-22.
+   */
+  askUser?: ToolContext["askUser"];
+  /** Honors `process.stdin.isTTY` by default; UI may override. */
+  isInteractive?: ToolContext["isInteractive"];
 }
 
 /**
@@ -49,6 +67,30 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
   let endStatus = "done";
 
   emitTelemetry({ type: "agent.start", agentId, role: "main" });
+
+  // Step-11 / step-16 prep: assemble a minimal ToolContext now so the v2
+  // tools (bash / web_fetch / ask_user_question / agent / todo_write) can
+  // honor abortSignal, ctx.session, ctx.askUser, etc. Step-16 owns the full
+  // wiring (memory, hooks, real permission engine); until then we provide
+  // the fields each meta/exec/web tool actually checks. Sub-agents get
+  // their OWN AbortController per AGENTS.md §9.
+  const cwd = process.cwd();
+  const config = loadConfig();
+  const session: ToolSession = { todoList: [] };
+  const ctx: ToolContext = {
+    cwd,
+    abortSignal: opts.abortSignal ?? new AbortController().signal,
+    logger,
+    // step-12 will replace these placeholder objects with the real engines.
+    permissions: {},
+    hooks: {},
+    config,
+    sessionId: agentId,
+    projectId: deriveProjectId(cwd),
+    session,
+    askUser: opts.askUser,
+    isInteractive: opts.isInteractive ?? (() => Boolean(process.stdin?.isTTY)),
+  };
 
   const messages: ChatMessage[] = [{ role: "user", content: prompt }];
 
@@ -124,10 +166,10 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
         try {
           // step-06 back-compat: tool.run may return either a legacy string
           // or a v2 ToolResult; we wrap strings and read `.content` from
-          // structured results. The full ToolContext lands when step-12/13
-          // wire the permission and hook engines — until then we pass `args`
-          // only (the v2 `ctx` parameter is optional).
-          const raw = await tool.run(parsed.data);
+          // structured results. We pass the minimal ToolContext assembled
+          // above so v2 tools that need abortSignal / session / askUser see
+          // them today (step-16 will swap in the full engine-aware ctx).
+          const raw = await tool.run(parsed.data, ctx);
           if (typeof raw === "string") {
             output = raw;
           } else {
