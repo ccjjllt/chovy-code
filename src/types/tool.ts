@@ -111,15 +111,18 @@ export interface PermissionEngine {
 }
 
 /**
- * Hook engine handle (placeholder until step-13).
+ * Hook engine handle (step-13).
  *
- * TODO step-13: replace with the real engine in
- * `src/harness/hooks/engine.ts`.
+ * The `emit` field name was frozen at step-06; step-13 adds the optional
+ * `runPermissionRequest` handle (adding optional fields is permitted,
+ * renaming is not — AGENTS.md §18). The agent loop injects a real engine
+ * from `src/harness/hooks/engine.ts`; the permission engine's L5 calls
+ * `runPermissionRequest` to race the user prompt. The full interface
+ * (HookEvent / HookOutcome / HookContext / HookPermissionDecision) is
+ * frozen in `./hook.ts` — that file is the single source; this module
+ * imports it (not re-exports) so the barrel has no duplicate export.
  */
-export interface HookEngine {
-  /** Fire a hook event (PreToolUse/PostToolUse/...); step-13 wires it up. */
-  emit?(event: string, payload: unknown): Promise<void>;
-}
+import type { HookEngine } from "./hook.js";
 
 /**
  * Sub-agent spawn function (placeholder until step-18).

@@ -378,19 +378,39 @@ export async function hasPermission(
   }
 
   // ── L5: user hooks (step-13) ───────────────────────────────────────────
-  // The hook engine isn't wired yet; `ctx.hooks.emit` is the placeholder
-  // interface frozen in step-06. When step-13 lands it will return
-  // {allow|deny|undefined}; today it resolves to undefined (no opinion).
-  if (ctx.hooks?.emit) {
+  // The hook engine races the user prompt. `runPermissionRequest` returns a
+  // decisive `allow`/`deny` if any matching hook produced one (first
+  // decisive wins per spec §竞速); `undefined` (bypass) falls through to L6.
+  // `{ok:true}` is NOT decisive (spec) — only explicit deny/allow wins.
+  // This preserves the L1/L4 ordering (§18): rules + safety already fired,
+  // so a hook can't override a deny rule or a `.gitconfig` safety trip.
+  if (ctx.hooks?.runPermissionRequest) {
     try {
-      await ctx.hooks.emit("PermissionRequest", { tool: toolName, args });
+      const decision = await ctx.hooks.runPermissionRequest(toolName, args, {
+        event: "PermissionRequest",
+        cwd: ctx.cwd,
+        sessionId: ctx.sessionId,
+        signal: ctx.abortSignal,
+      });
+      if (decision?.behavior === "allow") {
+        noteSuccess(state);
+        return { outcome: "allow", reason: "allowed by PermissionRequest hook" };
+      }
+      if (decision?.behavior === "deny") {
+        noteDenial(state);
+        maybeTripBreaker(state);
+        return {
+          outcome: "deny",
+          reason: decision.reason ?? "denied by PermissionRequest hook",
+        };
+      }
+      // undefined (bypass) → fall through to L6.
     } catch (err) {
       ctx.logger.warn("PermissionRequest hook threw", {
         tool: toolName,
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    // TODO step-13: read the hook verdict and short-circuit allow/deny.
   }
 
   // ── L6: resolve ask → prompt or deny ───────────────────────────────────

@@ -18,6 +18,7 @@ import {
   permissionModeFromString,
   type PermissionEngineState,
 } from "../harness/permissions/index.js";
+import { createHookEngine } from "../harness/hooks/index.js";
 
 const DEFAULT_SYSTEM_PROMPT =
   "You are chovy-code, a coding agent. Answer concisely. " +
@@ -55,6 +56,19 @@ export interface AgentOptions {
    * here; sub-agents (step-18) pass their own mode.
    */
   permissionMode?: string;
+  /**
+   * Settings paths for the hook engine (step-13). Defaults to
+   * `~/.chovy/settings.json` + `<cwd>/.chovy/settings.json`. Sub-agents
+   * pass their own paths (or reuse the parent's snapshot).
+   */
+  hooksSettingsPaths?: string[];
+  /**
+   * Called when a hook emits stderr the UI should surface (step-13 §验收 1:
+   * "PreToolUse 钩子 stderr 输出会出现在 UI"). Absent → stderr goes to the
+   * debug log only. The Ink REPL / AgentRepl may install this to render
+   * hook warnings inline.
+   */
+  onHookMessage?: (message: string) => void;
 }
 
 /**
@@ -133,6 +147,16 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
     logger,
   );
 
+  // Step-13 hook engine. Captures the settings snapshot at construction
+  // (SessionStart) so mid-session edits to settings.json don't take effect
+  // (spec §启动快照). Sub-agents (step-18) construct their own engine with
+  // an independent AbortController per AGENTS.md §9.
+  const hookEngine = createHookEngine({
+    cwd,
+    sessionId: agentId,
+    settingsPaths: opts.hooksSettingsPaths,
+  });
+
   const ctx: ToolContext = {
     cwd,
     abortSignal: opts.abortSignal ?? new AbortController().signal,
@@ -143,7 +167,26 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
       preflight: (toolName: string, args: unknown) =>
         runPreflight(toolName, args, ctx, permState),
     },
-    hooks: {},
+    // step-13: real hook engine. The frozen `HookEngine.emit?` handle +
+    // `runPermissionRequest?` are bound to `hookEngine`. The permission
+    // engine's L5 calls `runPermissionRequest` to race the user prompt.
+    hooks: {
+      emit: (event: string, payload: unknown) => {
+        return hookEngine.emit(event, payload).then((outcome) => {
+          // Surface PreToolUse block reasons + hook stderr to the UI.
+          if (outcome.type === "block" && opts.onHookMessage) {
+            opts.onHookMessage(`Hook ${event} blocked: ${outcome.reason}`);
+          }
+          return outcome;
+        });
+      },
+      runPermissionRequest: (toolName: string, args: unknown, hctx: unknown) =>
+        hookEngine.runPermissionRequest(
+          toolName,
+          args,
+          hctx as Parameters<typeof hookEngine.runPermissionRequest>[2],
+        ),
+    },
     config,
     sessionId: agentId,
     projectId: deriveProjectId(cwd),
@@ -153,6 +196,19 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
   };
 
   const messages: ChatMessage[] = [{ role: "user", content: prompt }];
+
+  // step-13: fire SessionStart once the engine + ctx are wired. Hooks run
+  // best-effort — errors are swallowed inside emit() so a misbehaving hook
+  // can't abort the session before it starts.
+  try {
+    if (ctx.hooks?.emit) {
+      await ctx.hooks.emit("SessionStart", { extra: { source: "startup" } });
+    }
+  } catch (err) {
+    logger.warn("SessionStart hook threw", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   try {
     for (let round = 0; round < maxRounds; round++) {
@@ -220,6 +276,39 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
           continue;
         }
 
+        // step-13: PreToolUse hook. A `block` outcome short-circuits the
+        // tool with the hook's reason (the model sees why it was blocked).
+        // `allow`/`bypass` fall through to the permission gate. Hook errors
+        // are swallowed inside emit() so a bad hook can't crash the loop.
+        if (ctx.hooks?.emit) {
+          try {
+            const pre = await ctx.hooks.emit("PreToolUse", {
+              toolName: call.name,
+              toolArgs: parsed.data,
+            });
+            if (pre.type === "block") {
+              const startedAt = Date.now();
+              emitTelemetry({
+                type: "tool.call",
+                tool: call.name,
+                ok: false,
+                durMs: Date.now() - startedAt,
+              });
+              messages.push({
+                role: "tool",
+                toolName: call.name,
+                content: `Blocked by PreToolUse hook: ${pre.reason}`,
+              });
+              continue;
+            }
+          } catch (err) {
+            logger.warn("PreToolUse hook threw", {
+              tool: call.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
         // Step-12 permission gate: run the 6-layer engine before executing.
         // `deny` (rules / safety / non-interactive ask) short-circuits the
         // tool with a `TOOL_DENIED` result; `ask` in an interactive session
@@ -235,6 +324,16 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
             ok: false,
             durMs: Date.now() - startedAt,
           });
+          // step-13: notify PermissionDenied hook (advisory — never blocks).
+          if (ctx.hooks?.emit) {
+            try {
+              await ctx.hooks.emit("PermissionDenied", {
+                toolName: call.name,
+                toolArgs: parsed.data,
+                error: permDecision.reason,
+              });
+            } catch { /* swallowed inside emit; defensive double-catch */ }
+          }
           messages.push({
             role: "tool",
             toolName: call.name,
@@ -288,6 +387,33 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
           ok,
           durMs: Date.now() - startedAt,
         });
+
+        // step-13: PostToolUse (success) / PostToolUseFailure (error).
+        // Advisory — a PostToolUse hook failure does NOT fail the tool call
+        // (spec §验收 3); errors are swallowed inside emit().
+        if (ctx.hooks?.emit) {
+          try {
+            if (ok) {
+              await ctx.hooks.emit("PostToolUse", {
+                toolName: call.name,
+                toolArgs: parsed.data,
+                result: output,
+              });
+            } else {
+              await ctx.hooks.emit("PostToolUseFailure", {
+                toolName: call.name,
+                toolArgs: parsed.data,
+                error: output,
+              });
+            }
+          } catch (err) {
+            logger.warn("PostToolUse hook threw", {
+              tool: call.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
         messages.push({ role: "tool", toolName: call.name, content: output });
       }
     }
@@ -299,6 +425,17 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
     endStatus = "failed";
     throw err;
   } finally {
+    // step-13: SessionEnd hook (advisory; best-effort — swallowed inside
+    // emit()). Fires on every exit path: done / max_rounds / failed.
+    if (ctx.hooks?.emit) {
+      try {
+        await ctx.hooks.emit("SessionEnd", { extra: { reason: endStatus } });
+      } catch (err) {
+        logger.warn("SessionEnd hook threw", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
     emitTelemetry({ type: "agent.end", agentId, status: endStatus, costUSD });
     // Short-lived CLI runs need an explicit flush so the JSONL file is on
     // disk before the process exits.

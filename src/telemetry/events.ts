@@ -48,7 +48,24 @@ export type TelemetryEvent =
   | { type: "goal.iteration"; round: number; converged: boolean; ts: number }
   | { type: "memory.injection"; bytes: number; entries: number; ts: number }
   | { type: "swarm.dispatch"; n: number; parallelism: number; ts: number }
-  | { type: "prompt.shape"; shape: PromptShape; ts: number };
+  | { type: "prompt.shape"; shape: PromptShape; ts: number }
+  | {
+      /**
+       * step-13: emitted once per hook execution. Single source is the
+       * hook engine (`src/harness/hooks/engine.ts`) — hook runners MUST
+       * NOT emit it themselves (mirrors the §17 `tool.call` invariant).
+       * `outcome` is the per-hook result: `ok` (exit 0, no block),
+       * `blocked` ({ok:false} or decisive deny), `bypassed` (no hook /
+       * trust-gated / timeout / non-zero exit), `error` (runner threw),
+       * `timeout` (hit the per-hook cap).
+       */
+      type: "hook.run";
+      event: string;
+      hookName: string;
+      outcome: "ok" | "blocked" | "bypassed" | "error" | "timeout";
+      durMs: number;
+      ts: number;
+    };
 
 /** Type of an event with `ts` filled in by the sink (so callers can omit it). */
 export type TelemetryEventInput = TelemetryEvent extends infer T
