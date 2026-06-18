@@ -11,10 +11,12 @@
  *   - Permission gate (step-12) — for now `checkPermissions` returns `ask`
  *     when overwriting, `allow` when creating; a TODO marks the step where
  *     the engine takes over.
- *   - Sandbox / cwd-allowlist (step-14) — out of scope here; the registered
- *     fs tools currently trust the harness `cwd`. Until step-14 lands the
- *     plain `safeFs` semantics apply (writes can land anywhere the OS
- *     permits, but `safeFs.remove` already refuses outside `~/.chovy`).
+ *   - Sandbox / cwd-allowlist (step-14) — `assertWritable` resolves
+ *     symlinks and refuses writes to the dangerous-file blacklist
+ *     (`.gitconfig`, `.ssh`, `.git/`, …) and to paths outside cwd
+ *     without an explicit allow. Even `bypassPermissions` can't escape
+ *     it (spec §与权限引擎的关系). `safeFs.remove` additionally refuses
+ *     anything outside `~/.chovy`.
  *   - 1 MiB content cap — quick guardrail against the model dumping a
  *     pathological payload. Larger files should land via a streaming tool
  *     in a future step.
@@ -29,9 +31,10 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 import { safeFs } from "../../fs/index.js";
+import { assertWritable } from "../../harness/sandbox/index.js";
 import { logger } from "../../logger/index.js";
 import { ChovyError } from "../../types/errors.js";
-import type { Tool, ToolResult } from "../../types/index.js";
+import type { Tool, ToolContext, ToolResult } from "../../types/index.js";
 import { lineDelta, markRead, recordChange } from "./fileHistory.js";
 
 const MAX_BYTES = 1024 * 1024; // 1 MiB
@@ -90,7 +93,7 @@ export const fileWriteTool: Tool<typeof argsSchema> = {
     // TODO step-12: hand over to the 6-layer engine (mode + rules + hooks).
   },
 
-  async run(args: Args): Promise<ToolResult> {
+  async run(args: Args, ctx?: ToolContext): Promise<ToolResult> {
     const t0 = Date.now();
     const { path, content } = args;
 
@@ -99,6 +102,21 @@ export const fileWriteTool: Tool<typeof argsSchema> = {
         ok: false,
         content: `Error: \`path\` must be absolute (got: ${path}).`,
         errorCode: "TOOL_INVALID_ARGS",
+        meta: { durMs: Date.now() - t0 },
+      };
+    }
+
+    // step-14 sandbox: physical write guard. Backstops the permission
+    // engine's L1g safety check (which inspects only the literal path) by
+    // resolving symlinks and refusing writes to the blacklist + outside
+    // cwd. Even `bypassPermissions` can't escape this — the engine may
+    // allow, but the tool refuses to write (spec §与权限引擎的关系).
+    const sandbox = assertWritable(path, { cwd: ctx?.cwd ?? process.cwd() });
+    if (!sandbox.ok) {
+      return {
+        ok: false,
+        content: `Refused: ${sandbox.reason ?? "sandbox denied write"}`,
+        errorCode: "TOOL_DENIED",
         meta: { durMs: Date.now() - t0 },
       };
     }

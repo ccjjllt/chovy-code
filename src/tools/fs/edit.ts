@@ -28,9 +28,10 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 import { safeFs } from "../../fs/index.js";
+import { assertWritable } from "../../harness/sandbox/index.js";
 import { logger } from "../../logger/index.js";
 import { ChovyError } from "../../types/errors.js";
-import type { Tool, ToolResult } from "../../types/index.js";
+import type { Tool, ToolContext, ToolResult } from "../../types/index.js";
 import { lineDelta, recordChange, wasRead } from "./fileHistory.js";
 
 const argsSchema = z.object({
@@ -115,7 +116,7 @@ export const fileEditTool: Tool<typeof argsSchema> = {
     // TODO step-12: defer to the 6-layer engine; plan mode will deny here.
   },
 
-  async run(args: Args): Promise<ToolResult> {
+  async run(args: Args, ctx?: ToolContext): Promise<ToolResult> {
     const t0 = Date.now();
     const { path, oldString, newString, replaceAll = false } = args;
 
@@ -135,6 +136,19 @@ export const fileEditTool: Tool<typeof argsSchema> = {
           "Error: file has not been read in this session. " +
           "Call `file_read` on this path before editing — the blind-write " +
           "guard rejects edits to unobserved files.",
+        errorCode: "TOOL_DENIED",
+        meta: { durMs: Date.now() - t0 },
+      };
+    }
+
+    // step-14 sandbox: physical write guard (same as file_write). Resolves
+    // symlinks + refuses the blacklist / outside-cwd writes even when the
+    // permission engine allowed the call.
+    const sandbox = assertWritable(path, { cwd: ctx?.cwd ?? process.cwd() });
+    if (!sandbox.ok) {
+      return {
+        ok: false,
+        content: `Refused: ${sandbox.reason ?? "sandbox denied write"}`,
         errorCode: "TOOL_DENIED",
         meta: { durMs: Date.now() - t0 },
       };

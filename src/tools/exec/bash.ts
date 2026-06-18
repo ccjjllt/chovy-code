@@ -35,8 +35,10 @@
  *     preflight outcome based purely on AST + pattern matching; the
  *     6-layer engine (step-12) will merge it with config rules, mode,
  *     hooks, and user prompts.
- *   - Real sandbox. `sandboxStub.shouldUseSandbox` is a placeholder so
- *     step-14 can swap in `src/harness/sandbox/`.
+ *   - Sandbox. step-14 lands the real `harness/sandbox` — `shouldUseSandbox`
+ *     (AST-aware) + `buildSandboxSpawnArgs` (bwrap on POSIX, strict-env +
+ *     ulimit fallback). The bash tool isolates network/privileged/out-of-cwd
+ *     commands behind a filtered-env child.
  *   - True background lifecycle. Step-23 owns the task registry; here we
  *     just generate handle ids and remember them in-process for the
  *     duration of the run.
@@ -53,6 +55,12 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 import { logger } from "../../logger/index.js";
+import {
+  buildSandboxSpawnArgs,
+  shouldUseSandbox,
+  type SpawnSandboxPlan,
+} from "../../harness/sandbox/index.js";
+import type { ChovyConfig } from "../../config/index.js";
 import type {
   PermissionPreflight,
   Tool,
@@ -181,22 +189,33 @@ export function listBackgroundTasks(): Array<{
   }));
 }
 
-// ── Sandbox hook (placeholder for step-14) ────────────────────────────────
+// ── Sandbox hook (step-14) ─────────────────────────────────────────────────
 
 /**
- * Step-14 will export a real `sandbox` from `src/harness/sandbox/`. Until
- * then we wire a stub here so that the bash tool's call site is already
- * written against the final shape — the swap-out is one import change.
+ * Sandbox handle shape the bash tool calls against. step-14 supplies a
+ * real implementation from `src/harness/sandbox/`; the barrel
+ * (`tools/exec/index.ts`) re-exports this type so callers that imported
+ * the step-09 stub keep compiling.
+ *
+ * The in-tool `run()` path calls the AST-aware
+ * `harness/sandbox.shouldUseSandbox(ast, opts)` directly (the command is
+ * already parsed, no double-parse). This string-based interface is kept
+ * for external callers / tests that only have the raw command; they can
+ * build a `SandboxLike` by re-parsing.
  */
 export interface SandboxLike {
   shouldUseSandbox(command: string): boolean;
 }
-const sandboxStub: SandboxLike = {
-  // Conservative default: no sandboxing today. Step-14 owns the real
-  // policy; until then, the user's chosen permission mode is the only
-  // gate.
-  shouldUseSandbox: () => false,
-};
+
+/**
+ * Resolve the effective permission mode for the sandbox decision. The
+ * agent loop passes `ctx.config.permissionMode` (frozen field), but some
+ * call sites (tests, one-shot `chat`) construct a ctx without it; we fall
+ * back to `"default"` so the sandbox errs toward isolation.
+ */
+function effectiveMode(config?: ChovyConfig): ChovyConfig["permissionMode"] {
+  return config?.permissionMode ?? "default";
+}
 
 // ── Danger evaluator ──────────────────────────────────────────────────────
 
@@ -478,11 +497,31 @@ interface ExecOptions {
   timeoutMs: number;
   runInBackground: boolean;
   abortSignal?: AbortSignal;
+  /**
+   * Optional sandbox spawn plan (step-14). When present, replaces the
+   * default `pickShell()` selection + `process.env` with a filtered-env
+   * (and bwrap-wrapped on POSIX when available) child. `undefined` ⇒ run
+   * unsandboxed (the historical behavior; the permission engine is the
+   * gate).
+   */
+  sandboxPlan?: SpawnSandboxPlan;
 }
 
 function execShellCommand(command: string, opts: ExecOptions): Promise<ExecResult> {
-  const { cmd, args } = pickShell();
-  const shellArgs = args(command);
+  // step-14: when the sandbox decided this command needs isolation,
+  // `buildSandboxSpawnArgs` produced the cmd/args/env. Otherwise fall
+  // back to the platform default shell + full process.env.
+  const picked = opts.sandboxPlan
+    ? {
+        cmd: opts.sandboxPlan.cmd,
+        shellArgs: opts.sandboxPlan.args,
+        env: opts.sandboxPlan.env,
+      }
+    : (() => {
+        const { cmd, args } = pickShell();
+        return { cmd, shellArgs: args(command), env: process.env };
+      })();
+  const { cmd, shellArgs, env } = picked;
   const t0 = Date.now();
 
   return new Promise<ExecResult>((resolve, reject) => {
@@ -490,7 +529,7 @@ function execShellCommand(command: string, opts: ExecOptions): Promise<ExecResul
     try {
       child = spawn(cmd, shellArgs, {
         cwd: opts.cwd,
-        env: process.env,
+        env,
         // `detached: true` on POSIX puts the child in its own process
         // group so we can SIGTERM the whole tree. On Windows the spawn
         // already gets its own process group when no shell wrap is used.
@@ -729,12 +768,28 @@ export const bashTool: Tool<typeof argsSchema> = {
 
     const cwd = args.cwd ?? ctx?.cwd ?? process.cwd();
     const timeoutMs = args.timeoutMs;
-    const useSandbox = sandboxStub.shouldUseSandbox(expandedCommand);
-    if (useSandbox) {
-      logger.debug("bash: sandbox requested (placeholder)", {
-        command: truncate(expandedCommand, 80),
+    // step-14: decide whether to isolate the child. `shouldUseSandbox`
+    // takes the already-parsed AST (no double-parse) + the effective
+    // permission mode from ctx. When true, build the spawn plan (bwrap on
+    // POSIX when available, strict-env + ulimit otherwise). A degraded
+    // plan (no bwrap) is logged but never blocks — spec §风险.
+    let sandboxPlan: SpawnSandboxPlan | undefined;
+    if (shouldUseSandbox(parse, { mode: effectiveMode(ctx?.config), command: expandedCommand, cwd })) {
+      sandboxPlan = buildSandboxSpawnArgs(expandedCommand, {
+        cwd,
+        timeoutMs,
+        abortSignal: ctx?.abortSignal,
       });
-      // TODO step-14: actually wrap the spawn in `harness/sandbox`.
+      logger.debug("bash: sandbox requested", {
+        command: truncate(expandedCommand, 80),
+        useBwrap: sandboxPlan.useBwrap,
+        degraded: sandboxPlan.degraded,
+      });
+      if (sandboxPlan.degraded) {
+        logger.warn("bash: sandbox degraded (bwrap unavailable or Windows); using strict-env fallback", {
+          command: truncate(expandedCommand, 80),
+        });
+      }
     }
 
     let res: ExecResult;
@@ -747,6 +802,8 @@ export const bashTool: Tool<typeof argsSchema> = {
         // tears the child process down. Sub-agents (step-18) get their
         // own controller per AGENTS.md §9.
         abortSignal: ctx?.abortSignal,
+        // step-14: the sandbox spawn plan (undefined ⇒ unsandboxed).
+        sandboxPlan,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
