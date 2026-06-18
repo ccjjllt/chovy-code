@@ -1,6 +1,7 @@
 import { getProvider } from "../providers/index.js";
 import { getTool } from "../tools/index.js";
 import { logger } from "../logger/index.js";
+import { emitTelemetry, getTelemetrySink } from "../telemetry/index.js";
 import type {
   ChatMessage,
   ProviderId,
@@ -41,76 +42,119 @@ export async function runAgent(prompt: string, opts: AgentOptions): Promise<stri
   const model = opts.model ?? provider.info.defaultModel;
   const maxRounds = opts.maxRounds ?? 8;
 
+  // TODO step-18: replace with proper SubAgentHandle id from lifecycle.ts.
+  const agentId = makeAgentId();
+  // TODO step-16: costUSD should come from costTracker; 0 is a placeholder.
+  let costUSD = 0;
+  let endStatus = "done";
+
+  emitTelemetry({ type: "agent.start", agentId, role: "main" });
+
   const messages: ChatMessage[] = [{ role: "user", content: prompt }];
 
-  for (let round = 0; round < maxRounds; round++) {
-    const reqOpts: ProviderRequestOptions = {
-      model,
-      messages,
-      systemPrompt: opts.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
-      temperature: opts.temperature,
-      maxTokens: opts.maxTokens,
-    };
+  try {
+    for (let round = 0; round < maxRounds; round++) {
+      const reqOpts: ProviderRequestOptions = {
+        model,
+        messages,
+        systemPrompt: opts.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+        temperature: opts.temperature,
+        maxTokens: opts.maxTokens,
+      };
 
-    // Prefer streaming when the provider supports it and the caller wants tokens.
-    let completion;
-    if (provider.stream && opts.onToken) {
-      for await (const chunk of provider.stream(reqOpts)) {
-        if (typeof chunk === "string") opts.onToken(chunk);
-        else completion = chunk;
+      // Prefer streaming when the provider supports it and the caller wants tokens.
+      let completion;
+      if (provider.stream && opts.onToken) {
+        for await (const chunk of provider.stream(reqOpts)) {
+          if (typeof chunk === "string") opts.onToken(chunk);
+          else completion = chunk;
+        }
+      } else {
+        completion = await provider.complete(reqOpts);
       }
-    } else {
-      completion = await provider.complete(reqOpts);
-    }
 
-    if (!completion) throw new Error("Provider returned no completion");
+      if (!completion) throw new Error("Provider returned no completion");
 
-    messages.push({
-      role: "assistant",
-      content: completion.content,
-      toolCalls: completion.toolCalls,
-    });
+      messages.push({
+        role: "assistant",
+        content: completion.content,
+        toolCalls: completion.toolCalls,
+      });
 
-    if (completion.toolCalls.length === 0) {
-      return completion.content;
-    }
+      if (completion.toolCalls.length === 0) {
+        return completion.content;
+      }
 
-    // Execute each tool call and append results.
-    for (const call of completion.toolCalls as ToolCall[]) {
-      const tool = getTool(call.name);
-      if (!tool) {
-        logger.warn(`Unknown tool requested: ${call.name}`);
-        messages.push({
-          role: "tool",
-          toolName: call.name,
-          content: `Error: unknown tool "${call.name}"`,
+      // Execute each tool call and append results.
+      for (const call of completion.toolCalls as ToolCall[]) {
+        const tool = getTool(call.name);
+        if (!tool) {
+          logger.warn(`Unknown tool requested: ${call.name}`);
+          emitTelemetry({ type: "tool.call", tool: call.name, ok: false, durMs: 0 });
+          messages.push({
+            role: "tool",
+            toolName: call.name,
+            content: `Error: unknown tool "${call.name}"`,
+          });
+          continue;
+        }
+
+        let args: unknown;
+        try {
+          args = JSON.parse(call.arguments || "{}");
+        } catch {
+          args = {};
+        }
+        opts.onToolCall?.(call.name, args);
+
+        const parsed = tool.schema.safeParse(args);
+        if (!parsed.success) {
+          emitTelemetry({ type: "tool.call", tool: call.name, ok: false, durMs: 0 });
+          messages.push({
+            role: "tool",
+            toolName: call.name,
+            content: `Error: invalid arguments — ${parsed.error.message}`,
+          });
+          continue;
+        }
+
+        const startedAt = Date.now();
+        let ok = true;
+        let output: string;
+        try {
+          output = await tool.run(parsed.data);
+        } catch (err) {
+          ok = false;
+          output = `Error: ${err instanceof Error ? err.message : String(err)}`;
+        }
+        emitTelemetry({
+          type: "tool.call",
+          tool: call.name,
+          ok,
+          durMs: Date.now() - startedAt,
         });
-        continue;
+        messages.push({ role: "tool", toolName: call.name, content: output });
       }
-
-      let args: unknown;
-      try {
-        args = JSON.parse(call.arguments || "{}");
-      } catch {
-        args = {};
-      }
-      opts.onToolCall?.(call.name, args);
-
-      const parsed = tool.schema.safeParse(args);
-      if (!parsed.success) {
-        messages.push({
-          role: "tool",
-          toolName: call.name,
-          content: `Error: invalid arguments — ${parsed.error.message}`,
-        });
-        continue;
-      }
-
-      const output = await tool.run(parsed.data);
-      messages.push({ role: "tool", toolName: call.name, content: output });
     }
+
+    logger.warn(`Agent hit maxRounds (${maxRounds}) without a final answer.`);
+    endStatus = "max_rounds";
+    return "(no final answer — round limit reached)";
+  } catch (err) {
+    endStatus = "failed";
+    throw err;
+  } finally {
+    emitTelemetry({ type: "agent.end", agentId, status: endStatus, costUSD });
+    // Short-lived CLI runs need an explicit flush so the JSONL file is on
+    // disk before the process exits.
+    await getTelemetrySink().flush();
   }
+}
 
-  logger.warn(`Agent hit maxRounds (${maxRounds}) without a final answer.`);
-  return "(no final answer — round limit reached)";
+function makeAgentId(): string {
+  // crypto.randomUUID is available in Bun + modern Node; fall back to a
+  // timestamp + random suffix in unlikely environments without it.
+  const g = globalThis as { crypto?: { randomUUID?: () => string } };
+  if (g.crypto?.randomUUID) return `agt_${g.crypto.randomUUID()}`;
+  return `agt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }

@@ -10,6 +10,28 @@ export type ProviderId =
   | "glm"
   | "kimi";
 
+/**
+ * Capability matrix (PCM — Provider Capability Matrix). Declared per
+ * provider in step-17 and consumed by the QueryEngine to pick a
+ * degradation path when a feature is missing (e.g. no native tools →
+ * fall back to JSON-mode tool emulation).
+ *
+ * The schema is frozen here in step-01; values land in
+ * `src/providers/capabilities.ts` during step-17.
+ */
+export interface ProviderCapabilities {
+  streaming: boolean;
+  tools: boolean;
+  vision: boolean;
+  jsonMode: boolean;
+  /** Native prompt-cache awareness (e.g. Anthropic). */
+  promptCache: boolean;
+  /** Long context window (>= 128k tokens). */
+  longContext: boolean;
+  /** Maximum context window in tokens — used by SCW (step-27). */
+  contextWindow: number;
+}
+
 /** Static descriptor for a provider (capabilities + default model). */
 export interface ProviderInfo {
   id: ProviderId;
@@ -22,6 +44,12 @@ export interface ProviderInfo {
   supportsStreaming: boolean;
   /** True if the provider supports tool/function calling. */
   supportsTools: boolean;
+  /**
+   * Full capability matrix. Optional in step-01 because the existing
+   * provider scaffolds don't declare it yet; step-17 makes it required
+   * across all 7 providers.
+   */
+  capabilities?: ProviderCapabilities;
 }
 
 /** Options passed to a provider when making a request. */

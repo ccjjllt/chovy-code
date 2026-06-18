@@ -6,6 +6,16 @@ export interface ChatMessage {
   toolName?: string;
   /** Present when role === "assistant": tool calls the model requested. */
   toolCalls?: ToolCall[];
+
+  // ── Persistence / observability (step-01 additive; safe to ignore) ───────
+  /** Stable id; written by the memory store (step-24) and session log. */
+  id?: string;
+  /** Wall-clock timestamp (ms epoch). */
+  ts?: number;
+  /** Reasoning trace surfaced by o1 / Claude thinking / reasoning models. */
+  reasoning?: string;
+  /** Provider-specific rich annotations (citations, web_search results, ...). */
+  annotations?: Array<{ type: string; payload: unknown }>;
 }
 
 /** A tool call requested by the model. */
