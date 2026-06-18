@@ -13,8 +13,9 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（step-01–05）与 Phase B（step-06–13：Tool Protocol v2 + ATP + 9 工具 + 权限引擎 + hook 引擎）已完成构建并完成验收追补**。
-下一步主线是继续 Phase C 的 Harness 收尾与核心循环：step-14（沙箱）、step-15（prompt）、step-16（QueryEngine）、step-17（provider 真实接线）。
+当前阶段：**Phase A（Foundation）与 Phase B（Tool System v2）已完成构建并验收；Phase C（Harness）进行中**。
+阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
+每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
 ---
 
@@ -53,19 +54,14 @@ chovy-code/
     ├── telemetry/            # 本地 JSONL telemetry sink
     ├── providers/            # registry + openai 参考实现 + 6 个 scaffold
     ├── tools/                # Tool v2 registry + ATP allocator + echo + fs / exec / web / meta 工具
-    ├── harness/              # 缰绳层：permissions（6 层引擎 + 5 模式 + 熔断器）+ hooks（12 事件 + 竞速 + 快照 + trust）
+    ├── harness/              # 缰绳层：permissions（6 层引擎 + 5 模式 + 熔断器）
     └── types/                # provider / messages / tool 契约
 ```
 
-**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop（构造最小 `ToolContext` 并下发到 `tool.run`）与流式 UI 渲染；
-step-01–05 的类型/错误、配置/secrets/features、结构化日志、本地 telemetry、safeFs、CLI 子命令和 REPL 骨架；
-step-06–07 的 Tool Protocol v2、lean/full 描述、工具注册元数据、ATP 预算分配器、`tools.described` telemetry；
-step-08 fs 工具（read/write/edit/glob/grep）；step-09 bash（AST + 双窗截断 + 单槽 hint + 跨平台 spawn + ctx.abortSignal 接通）；
-step-10 web（fetch + search + 自研 htmlToMd + 私网拒绝 + 跨域重定向不跟随 + 15min LRU）；
-step-11 meta（todoWrite / askUserQuestion + skill/agent stub）。Phase B 验收报告见 `docs/complete/step-06-11-phase-b-acceptance.md`。
-step-12 权限引擎（6 层决策 + 5 模式 + 拒绝熔断器 + L1g bypass 免疫安全检查 + rules.json 加载/匹配），agent loop 每次 `tool.run` 前过 `hasPermission` 网关。完成报告见 `docs/complete/step-12-permission-engine.md`。
-step-13 hook 引擎（12 类事件 + PermissionRequest 竞速 + 启动快照防热改 + `~/.chovy/trust.json` 信任边界 + command/function runner + 跨平台 killTree 超时），agent loop 发射 SessionStart/PreToolUse/PostToolUse/PostToolUseFailure/PermissionDenied/SessionEnd；权限引擎 L5 调 `runPermissionRequest` 读 decisive 裁决短路 L6。完成报告见 `docs/complete/step-13-hook-engine.md`。
-**未实现**：沙箱（step-14）、QueryEngine（step-16）、子智能体真实运行（step-18/20）、记忆/checkpoint（step-24–28）、目标循环（step-23）、技能图（step-29）、所有非 openai provider 的真实网络接线（step-17）。
+**已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、最小 agent loop（构造 `ToolContext` 并下发到 `tool.run`）与流式 UI 渲染；
+Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、9 个核心工具（fs / exec / web / meta）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件）。
+各 Phase 的详细产物与验收结论见 `docs/complete/` 下对应报告；本文不逐步罗列。
+**未实现**：沙箱、QueryEngine、子智能体真实运行、记忆/checkpoint、目标循环、技能图、非 openai provider 的真实网络接线（对应 Phase C 余量 + D–I）。
 
 ---
 
@@ -294,56 +290,58 @@ chovy log tail                   # 看 telemetry
 
 ---
 
-## 15. Phase A 验收追记（2026-06-18）
+## 15. Phase A 不变量（Foundation）
 
-- step-01–05 已按 `docs/complete/step-01-05-acceptance.md` 完成验收追补。
+> Phase A（step-01–05）产物/验收见 `docs/complete/step-01-05-acceptance.md`。本节只保留跨步骤仍生效的不变量。
+
 - Windows 下 `config.json` / `features.json` 可能带 UTF-8 BOM；配置层必须在解析 JSON 前兼容 BOM。
 - CLI 子命令必须统一走 `resolveCtx()`，确保 `CHOVY_HOME`、feature flag、permission mode、config 校验语义一致。
 - 非 TTY 下无参 `chovy` 不应尝试进入 Ink REPL；应给出明确 `CONFIG_INVALID` 提示，让用户改用 `chovy chat "..."`。
 - CLI 捕获到 `ChovyError` 时必须把 Error 对象交给 logger，不能先转成 `.message` 字符串，否则会丢失 `chovy.error: <CODE>` 规范输出。
 
-## 16. Step 06–07 验收追记（2026-06-18）
+## 16. Phase B/C 不变量（Tool System v2 + Harness）
 
-- B1 屏障已验收：`Tool` / `ToolContext` / `ToolResult` / `DescribeOptions` / `DescribedTool` 签名可供下游依赖。
-- `Tool.run` 兼容旧工具的同步或异步 `string` 返回；agent loop 会包装为 `{ ok: true, content }`。
-- ATP 分配器必须在 `budgetTokens <= 0` 时仍裁掉 lean 描述，不能无视预算注入全部工具。
-- `fullTriggers` / verb 正则匹配前要复位 `lastIndex`，避免带 `g` 的正则造成间歇性漏命中。
-- 验收报告见 `docs/complete/step-06-07-acceptance.md`。
+> Phase B（step-06–11）与 Phase C（step-12–14）产物/验收见 `docs/complete/` 下各报告。本节只保留跨步骤仍生效的不变量；后续 Phase 扩展对应模块时必须遵守。
 
-## 17. Phase B 验收追记（step-06–11，2026-06-18）
+**单源规约**（字面量联合只在一处声明，harness/telemetry 层 re-export，禁止重声明）：
+- `AgentRole` → `src/types/agent.ts`；`events.ts` 通过 `export type` 复用。
+- `PermissionMode` → `src/config/config.ts`；`harness/permissions/modes.ts` 仅 re-export。
+- `HookEvent` → `src/types/hook.ts`；`harness/hooks/index.ts` 仅 re-export。
 
-- step-06–11 已按 `docs/complete/step-06-11-phase-b-acceptance.md` 完成验收追补。
-- **`tool.call` telemetry 单源**：agent loop wrapper 是唯一发射点，工具内部**禁止** emit `{type:"tool.call",...}`。需要更细粒度信息走 `ToolResult.meta`（`durMs / bytes / cmd / filesChanged`）或 `structuredOutput`。step-27 上下文阈值监控、step-30 计数测试都按这个不变量编写。
-- **`AgentRole` 单源**：`src/types/agent.ts` 是唯一定义；`src/telemetry/events.ts` 通过 `export type { AgentRole } from "../types/agent.js"` 复用。step-19 真实化时只动 `types/agent.ts`，`events.ts` / `relevance.ts` / agent loop 自动跟随。**禁止**在 `events.ts` 重新声明字面量。
-- **`ToolContext` 必须由 agent loop 注入**：`runAgent()` 入口构造最小 ctx（`cwd / abortSignal / logger / permissions:{} / hooks:{} / config / sessionId / projectId / session / askUser / isInteractive`），并把 ctx 传给 `tool.run(args, ctx)`。step-12/13/16/22 的扩展应**追加**字段而非替换 ctx。
-- **bash 必须接 `ctx?.abortSignal`**：`execShellCommand` 的 spawn 选项已支持，本步实接。新工具如要做长任务，**必须**透传 `ctx?.abortSignal` 到内部 fetch / spawn / setTimeout。
-- 子 agent（step-18）**必须**为 `ctx.abortSignal` 创建独立 `AbortController`，不能共用父 agent 的 signal（AGENTS.md §9 既有红线，本步在 ctx 模型层面留好接口）。
-- `ask_user_question` 在 `ctx.askUser` 缺席时返回 `INTERNAL → step-22`，在非 TTY 下返回 `TOOL_DENIED`，**绝不**阻塞 stdin；step-22 落地 `AskUserOverlay` 时只接 `runAgent({askUser, isInteractive})`。
-- `todo_write` 的会话 todo 现在通过 `ctx.session.todoList` 存活（agent loop 注入空数组），module-level fallback 仅在裸调（如 smoke 脚本）时启用。
+**冻结接口**（字段名不改，扩展只追加可选字段）：
+- `Tool` / `ToolContext` / `ToolResult`（step-06 冻结）：`ToolContext` 必须由 agent loop 注入，`runAgent()` 入口构造 ctx（`cwd / abortSignal / logger / permissions / hooks / config / sessionId / projectId / session / askUser / isInteractive`）并传给 `tool.run(args, ctx)`；后续扩展**追加**字段而非替换 ctx。
+- `PermissionEngine.preflight?(toolName, args)`（step-06 冻结）：agent loop 把 `hasPermission` 绑定为该 handle；扩展**追加** `PermissionEngineState` 字段或新增调用点，不替换。
+- `HookEngine.emit?(event, payload)`（step-06 冻结）：追加可选 `runPermissionRequest?` handle（追加 permitted，rename 不 permitted）；`tool.ts` 用 `import type`（不 re-export）避免 barrel 双导出冲突。
 
-## 18. Step 12 验收追记（权限引擎，2026-06-18）
+**telemetry 单源**：
+- `tool.call` 事件只在 agent loop wrapper 发射，工具内部**禁止** emit；细粒度信息走 `ToolResult.meta`（`durMs / bytes / cmd / filesChanged`）或 `structuredOutput`。
+- `hook.run` 事件只在 hook engine（`engine.ts`）发射，runners 禁止 emit。`outcome` 5 态：`ok` / `blocked` / `bypassed` / `error` / `timeout`。
 
-- step-12 已按 `docs/complete/step-12-permission-engine.md` 完成构建与验收。6 层决策 + 5 模式 + 拒绝熔断器落地于 `src/harness/permissions/`。
-- **`PermissionMode` 单源**：字面量联合**只在 `src/config/config.ts`** 声明；`src/harness/permissions/modes.ts` 仅 `export type { PermissionMode } from "../../config/index.js"`，**禁止**在 harness 层重声明字面量（与 §17 `AgentRole` 单源同例）。
-- **`PermissionEngine` 接口未改字段名**：step-06 冻结的 `preflight?(toolName, args)` 保持；agent loop 把 `hasPermission` 绑定为该 handle 的实现。step-13/14/22 的扩展**追加** `PermissionEngineState` 字段或新增调用点，不替换冻结接口。
-- **L1g 安全检查对所有模式免疫**（含 `bypassPermissions`）：`.gitconfig`/`.bashrc`/`.zshrc`/`.profile`/`.ssh`/`.aws/credentials`/`.git/`/`.chovy/secrets/`/`--no-verify` → deny；`git push --force`/`-f`/`--force-with-lease` → ask。这是 AGENTS.md §5 红线的代码化，step-14 沙箱在 engine 之下分层，**不得**绕过 L1g。
-- **L3/L4 调序**：`acceptEdits` 的 fs-mutate 自动放行与 `auto` 的安全工具放行必须**先于** `dontAsk→deny` 转换（L3），否则非交互 `acceptEdits`/`auto` 运行会把每次写/读都拒掉。deny 规则（L1a）与 safety deny（L1g）仍在最前。step-13 接 L5 hook 时维持此序。
-- **非交互 `default` 模式下 bash 普通命令被拒是预期行为**：bash preflight 对非只读命令返回 `ask`，非 TTY → ask→deny。用户需 `--permission-mode acceptEdits`/`bypassPermissions` 或写 allow 规则。**不要**为了让 `chat "..."` 跑 bash 而把 default 改成放行——安全默认优先。
-- **`auto` 模式无小模型**：白名单 + step-09 `isAllReadOnly` 命令分类，未识别回退 `ask`。`feature('auto.classifier')` 留桩，默认 off（AGENTS.md §5 红线 + innovations §10）。
-- **规则匹配 `g` 正则陷阱**：`matchWildcardPattern` 每次**新建** RegExp，不复用带 `g` 的实例（§16 既有追记的本步实例化）。
-- **rules.json 缺失静默**：`loadRulesFromPaths` 对 ENOENT 静默跳过（errno 从 `ChovyError.meta.errno` 提取，因 safeFs 把 node errno 包进 `MEMORY_IO`）；坏 JSON/坏行 warn + 跳过，不抛。
-- **harness→tools 边**：engine 只 reach `tools/exec/ast.js` + `tools/exec/classification.js` 两个零外部依赖纯函数叶子，不引入 tool registry，无循环。后续 harness 模块需复用 tools 纯函数时照此例 reach 叶子而非 barrel。
+**Tool / ATP 不变量**：
+- `Tool.run` 兼容旧工具的同步或异步 `string` 返回；agent loop 包装为 `{ ok: true, content }`。
+- ATP 分配器在 `budgetTokens <= 0` 时仍裁掉 lean 描述，不能无视预算注入全部工具。
+- `fullTriggers` / verb 正则匹配前要复位 `lastIndex`，避免带 `g` 的正则造成间歇性漏命中。规则匹配 `matchWildcardPattern` 每次**新建** RegExp，不复用带 `g` 的实例。
 
-## 19. Step 13 验收追记（hook 引擎，2026-06-18）
+**权限引擎不变量**：
+- L1g 安全检查对所有模式免疫（含 `bypassPermissions`）：`.gitconfig`/`.bashrc`/`.zshrc`/`.profile`/`.ssh`/`.aws/credentials`/`.git/`/`.chovy/secrets/`/`--no-verify` → deny；`git push --force`/`-f`/`--force-with-lease` → ask。这是 §5 红线的代码化，沙箱在 engine 之下分层，**不得**绕过 L1g。
+- L3/L4 调序：`acceptEdits` 的 fs-mutate 自动放行与 `auto` 的安全工具放行必须**先于** `dontAsk→deny` 转换（L3）；deny 规则（L1a）与 safety deny（L1g）仍在最前。L5 hook 在 L1/L4 之后，不能 override deny 规则或 safety trip。
+- 非交互 `default` 模式下 bash 普通命令被拒是预期行为（bash preflight 非只读 → ask，非 TTY → deny）。**不要**为了让 `chat "..."` 跑 bash 而把 default 改成放行——安全默认优先。
+- `auto` 模式无小模型：白名单 + 只读命令分类，未识别回退 `ask`；`feature('auto.classifier')` 留桩默认 off（§5 红线 + innovations §10）。
+- L5 竞速：`runPermissionRequest` 返回 decisive `allow`/`deny` 短路 L6；`undefined`（旁路）落 L6。**`{ok:true}` 不 decisive**——只有 `{ok:false}` 或显式 `permissionDecision:"allow"` 才决策成功。
 
-- step-13 已按 `docs/complete/step-13-hook-engine.md` 完成构建与验收。12 事件 + 竞速 + 启动快照 + trust 边界落地于 `src/harness/hooks/`。
-- **`HookEvent` 单源**：12 事件字面量联合**只在 `src/types/hook.ts`** 声明；`harness/hooks/index.ts` 仅 re-export，**禁止**在 harness 层重声明字面量（与 §17 `AgentRole` / §18 `PermissionMode` 单源同例）。
-- **`HookEngine` 接口未改字段名**：step-06 冻结的 `emit?(event, payload)` 保持；step-13 追加可选 `runPermissionRequest?()` handle（追加可选字段 permitted，rename 不 permitted）。`tool.ts` 用 `import type`（**不 re-export**）避免 barrel 双导出冲突。step-14/22 的扩展**追加**字段或新增调用点，不替换冻结接口。
-- **L5 竞速语义**：`runPermissionRequest` 返回 decisive `allow`/`deny` 短路 L6；`undefined`（旁路）落 L6。**`{ok:true}` 不 decisive**（spec 明确）——只有 `{ok:false}`（deny）或 `hookSpecificOutput.permissionDecision:"allow"` 才决策成功。step-22 落地后 agent loop 用 `Promise.race([ctx.askUser, runPermissionRequest])` 接入用户对话框，本步返回值形状已就绪。
-- **L1/L4 调序不变**（§18）：L5 hook 在 L1（rules+safety）与 L4（mode auto-allow）之后，hook 不能 override deny 规则或 `.gitconfig` safety trip。
-- **启动快照防热改**：`createHookEngine` 构造时 `captureSnapshot()` 读盘一次 → 冻结 in-memory `HookConfig[]`；本会话所有 emit/runPermissionRequest 读快照副本，**不重读盘**。避免对话中改 settings.json 立即生效的安全隐患。
-- **Trust 边界**：`~/.chovy/trust.json`（`{ "<normalizedCwd>": true }`）+ 父目录继承；`shouldAllowManagedHooksOnly(cwd)` 读它。未信任 cwd 只跑 `managed:true` 钩子，拒绝用户写的 command/function 钩子。Trust dialog UI 留给 step-22（调 `markTrusted(cwd)`）。
-- **超时 + 跨平台 killTree**：默认 `timeoutMs=2000`，硬上限 `10_000`。Windows 上 `child.kill("SIGTERM")` 只杀 shell 不杀工作进程（stdio 管道不关、close 不触发、超时"失效"），`killTree` 用 `taskkill /T /F /PID` 杀整树；POSIX 用 `process.kill(-pid)`（需 `detached:true` spawn）。
-- **`hook.run` telemetry 单源**：`hook.run` 事件**只在 `engine.ts` 发射**（`emitHookTelemetry`）；runners 禁止 emit（同 §17 `tool.call` 不变量）。`outcome` 5 态：`ok` / `blocked` / `bypassed` / `error` / `timeout`。
-- **harness→tools 边**（§18 同例）：hook 层是叶子，只 reach `node:child_process` / `node:path` / `node:os` + `safeFs` / `logger` / `zod` / `telemetry`。**不** reach `tools/exec/bash.ts`（shell 选择 + killTree 独立实现，避免循环）。matcher 通配语法是 `rules.ts` `matchWildcardPattern` 的**精简端口**（不 import）。
-- **agent loop 发射点**：SessionStart（loop 开始）/ PreToolUse（permission gate 前，block 短路）/ PostToolUse（成功后）/ PostToolUseFailure（失败后）/ PermissionDenied（permission deny 后）/ SessionEnd（finally）。PostToolUse 钩子失败 **≠** 工具失败（仅记 telemetry）。
+**Hook 引擎不变量**：
+- 启动快照防热改：`createHookEngine` 构造时读盘一次 → 冻结 in-memory 副本；本会话所有 emit/runPermissionRequest 读副本，**不重读盘**。
+- Trust 边界：`~/.chovy/trust.json`（`{ "<normalizedCwd>": true }`）+ 父目录继承；未信任 cwd 只跑 `managed:true` 钩子，拒绝用户写的 command/function 钩子。
+- 超时默认 2000ms、硬上限 10000ms；Windows killTree 用 `taskkill /T /F`，POSIX 用进程组信号（`detached:true` spawn + `process.kill(-pid)`）。
+- agent loop 发射点：SessionStart / PreToolUse（block 短路）/ PostToolUse / PostToolUseFailure / PermissionDenied / SessionEnd。PostToolUse 钩子失败 **≠** 工具失败（仅记 telemetry）。
+
+**bash / ctx 不变量**：
+- bash 必须接 `ctx?.abortSignal`；新工具做长任务**必须**透传 `ctx?.abortSignal` 到内部 fetch / spawn / setTimeout。
+- 子 agent **必须**为 `ctx.abortSignal` 创建独立 `AbortController`，不能共用父 agent 的 signal（§9 既有红线）。
+- `ask_user_question` 在 `ctx.askUser` 缺席时返回 `INTERNAL`，非 TTY 返回 `TOOL_DENIED`，**绝不**阻塞 stdin。
+- `todo_write` 的会话 todo 通过 `ctx.session.todoList` 存活（agent loop 注入空数组），module-level fallback 仅裸调时启用。
+
+**harness→tools 边**：harness 模块是叶子，只 reach `tools/exec/ast.js` + `tools/exec/classification.js` 等零外部依赖纯函数叶子，不引入 tool registry，无循环。后续 harness 模块复用 tools 纯函数时照此例 reach 叶子而非 barrel。hook 层 shell 选择 + killTree 独立实现，不 reach `tools/exec/bash.ts`；matcher 通配语法是 `rules.ts` 的精简端口（不 import）。
+
+**rules.json / settings.json 缺失静默**：ENOENT 静默跳过（errno 从 `ChovyError.meta.errno` 提取，因 safeFs 把 node errno 包进 `MEMORY_IO`）；坏 JSON/坏行 warn + 跳过，不抛。
+
