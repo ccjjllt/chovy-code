@@ -63,6 +63,7 @@ import { getCompanionStateMachine } from "../companion/index.js";
 import { useKeybinding } from "../keybindings/index.js";
 import { CommandPalette } from "../palette/index.js";
 import { usePaletteState, openPalette } from "../palette/state.js";
+import { registerAllCommandSources } from "./commandSources.js";
 
 interface Props {
   provider: ProviderId;
@@ -573,6 +574,13 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     config: configRuntime,
     mem: memRuntime,
   }), [appendSystem, exit, goalRuntime, checkpointRuntime, skillRuntime, configRuntime, memRuntime]);
+
+
+  useEffect(() => {
+    registerAllCommandSources(ctx).catch(err => {
+      logger.error(`Failed to register command sources: ${err}`);
+    });
+  }, [ctx]);
 
   const runSlash = useCallback(async (line: string): Promise<void> => {
     const trimmed = line.replace(/^\//, "");
