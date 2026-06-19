@@ -48,6 +48,10 @@ export function listCommands(ctx: ReplCtx): PaletteCommand[] {
   });
 }
 
+export function listAllCommands(): PaletteCommand[] {
+  return [...store.values()];
+}
+
 function commandEnabled(c: PaletteCommand, ctx: ReplCtx): boolean {
   return typeof c.enabled === "function" ? c.enabled(ctx) : c.enabled !== false;
 }

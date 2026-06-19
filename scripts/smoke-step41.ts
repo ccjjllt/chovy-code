@@ -12,6 +12,8 @@ async function run() {
   
   // Test 3: Set query
   setPaletteQuery("test");
+  if (_store.getState().rawQuery !== "test") throw new Error("rawQuery should be 'test'");
+  await new Promise(r => setTimeout(r, 100));
   if (_store.getState().query !== "test") throw new Error("Query should be 'test'");
   
   // Test 4: Move cursor

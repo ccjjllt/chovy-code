@@ -75,9 +75,9 @@ const langOut = await runChovy(["chat", "/lang en"]);
 assertMatch(langOut, /Locale set to en/);
 
 // 8. 命令面板（headless mode 模拟）
-//    palette 是交互的，不能在 demo 里直接 trigger Ctrl+P；改为列出 palette commands：
-const palOut = await runChovy(["palette", "list"]);    // step-44 加新 CLI 子命令？或：
-assertMatch(palOut, /commandEquivalents:\s*(7[2-9]|[8-9]\d|\d{3,})/);
+//    palette 是交互的，不能在 demo 里直接 trigger Ctrl+P；改为执行内部 coverage smoke 测试：
+const palOut = await run(["bun", "run", "scripts/smoke-step44.ts"], baseEnv);
+assertMatch(palOut.combined, /SUCCESS: commandEquivalents =\s*(7[2-9]|[8-9]\d|\d{3,})/);
 
 // 9. 吉祥物（CHOVY_NO_COMPANION=0 启动后冷解码缓存生成）
 //    用 Bun.spawn 设 CHOVY_HOME tmp + chovy chat "hi" + 退出 → 检查 cache 目录是否生成 frame-000.ansi
@@ -108,7 +108,8 @@ Step-59 不能只信 step-43/44 的局部 smoke；必须在最终集成状态重
 
 ```ts
 // scripts/smoke-tui.ts 里的 Phase P 汇总段
-const coverage = await runChovyJson(["palette", "coverage", "--json"]);
+// 不使用 chovy palette coverage (避免新增 CLI 表面)，直接使用 smoke-step44 的输出或内部 API
+const coverage = await runSmokeStep44(); // 获取 coverage JSON
 assert(coverage.commandEquivalents >= 72);
 assert(coverage.bundledSkills >= 15);
 assert(coverage.sources.includes("slash"));

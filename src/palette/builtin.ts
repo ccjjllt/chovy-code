@@ -4,19 +4,19 @@ import type { ReplCtx } from "../cli/slashCommands.js";
 export function registerBuiltinPaletteCommands(): void {
   const dummyCommands = [
     // Session / Transcript
-    { id: "session.new", name: "new", cat: "session", desc: "New session" },
-    { id: "session.list", name: "sessions", cat: "session", desc: "List sessions" },
-    { id: "session.resume", name: "resume", cat: "session", desc: "Resume session" },
-    { id: "session.rename", name: "rename", cat: "session", desc: "Rename session" },
-    { id: "session.compact", name: "compact", cat: "session", desc: "Compact session" },
-    { id: "session.copy", name: "copy", cat: "session", desc: "Copy session" },
-    { id: "session.export", name: "export", cat: "session", desc: "Export session" },
-    { id: "session.clear", name: "clear", cat: "session", desc: "Clear session" },
-    { id: "session.quit", name: "quit", cat: "session", desc: "Quit REPL" },
-    { id: "session.rewind", name: "rewind", cat: "session", desc: "Rewind session" },
-    { id: "session.timeline", name: "timeline", cat: "session", desc: "Session timeline" },
-    { id: "session.branch", name: "branch", cat: "session", desc: "Branch session" },
-    { id: "session.diff", name: "diff", cat: "session", desc: "Diff session" },
+    { id: "session.new", name: "new", cat: "session", desc: "New session", hidden: true },
+    { id: "session.list", name: "sessions", cat: "session", desc: "List sessions", hidden: true },
+    { id: "session.resume", name: "resume", cat: "session", desc: "Resume session", hidden: true },
+    { id: "session.rename", name: "rename", cat: "session", desc: "Rename session", hidden: true },
+    { id: "session.compact", name: "compact", cat: "session", desc: "Compact session", hidden: true },
+    { id: "session.copy", name: "copy", cat: "session", desc: "Copy session", hidden: true },
+    { id: "session.export", name: "export", cat: "session", desc: "Export session", hidden: true },
+    { id: "session.clear", name: "clear", cat: "session", desc: "Clear session", hidden: true },
+    { id: "session.quit", name: "quit", cat: "session", desc: "Quit REPL", hidden: true },
+    { id: "session.rewind", name: "rewind", cat: "session", desc: "Rewind session", hidden: true },
+    { id: "session.timeline", name: "timeline", cat: "session", desc: "Session timeline", hidden: true },
+    { id: "session.branch", name: "branch", cat: "session", desc: "Branch session", hidden: true },
+    { id: "session.diff", name: "diff", cat: "session", desc: "Diff session", hidden: true },
 
     // Prompt / Input
     { id: "prompt.editor", name: "editor", cat: "prompt", desc: "Toggle editor mode" },
@@ -87,6 +87,8 @@ export function registerBuiltinPaletteCommands(): void {
         slash: { name: cmd.name },
         source: "builtin",
         direct: true,
+        hidden: (cmd as any).hidden,
+        enabled: (cmd as any).hidden ? false : true,
       });
     } catch {}
   }

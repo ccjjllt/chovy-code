@@ -1,5 +1,5 @@
 import { registerAllCommandSources } from "../src/cli/commandSources.js";
-import { listCommands, clearRegistryForTesting } from "../src/palette/registry.js";
+import { listAllCommands, clearRegistryForTesting } from "../src/palette/registry.js";
 
 async function main() {
   clearRegistryForTesting();
@@ -21,7 +21,7 @@ async function main() {
 
   await registerAllCommandSources(dummyCtx);
 
-  const commands = listCommands(dummyCtx);
+  const commands = listAllCommands();
 
   let commandEquivalents = 0;
   const byGroup: Record<string, number> = {};

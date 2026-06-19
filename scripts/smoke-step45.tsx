@@ -1,4 +1,3 @@
-import React from 'react';
 import { render } from 'ink';
 import { WelcomeScreen } from '../src/screens/welcome.js';
 import { setTheme } from '../src/theme/index.js';
@@ -11,7 +10,7 @@ async function run() {
   const stream1 = new PassThrough();
   let instance = render(
     <WelcomeScreen
-      provider="test-provider"
+      provider={"anthropic" as any}
       model="test-model"
       mode="default"
       cwd="/test/path"
