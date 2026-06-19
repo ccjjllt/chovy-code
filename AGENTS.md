@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）、Phase G step-24（Memory Store：bun:sqlite + FTS5 + 4 类记忆）+ step-26（Checkpoint Writer：协调器 + 路径沙箱 + 7 段模板 + fallback）+ Phase H step-27（Context Monitor：自适应阈值 + ContextMonitor + `<context-pressure>` 注入 + soft 自动 checkpoint + HeaderBar 实时 ctx % 颜色 + `CHOVY_CTX_DISABLE` 开关）+ Phase H step-28（Context Rebuild：ContextBudget 8 桶 + 4 selector + sessions/jsonl 归档 + `<context-rebuilt>` marker + ContextRebuilt hook + context.rebuild telemetry + cost.cumulativeTotal 防 budget 绕过 + monitor.reset）+ Phase I step-29（Skill Graph CSG：Skill/SkillNode/SkillTriggers 冻结 + 7 bundled skills + planner BFS closure + conflict resolution + budget cascade + skills.lock fingerprint cache + skill.plan telemetry + ToolSession.activeSkillFragments + dynamic suffix 注入 + SkillTool 真实化 + REPL `/skill list|show|plan|<name>|clear` + `chovy skill list/show` CLI + auto-OFF default via `CHOVY_SKILLS_AUTO=1` / `feature('skills.auto')`）全部完成构建并通过复验；下一步进入 step-25（Memory Injection）+ step-30（端到端集成）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`；Phase G step-24 验收报告见 `docs/complete/step-24-acceptance.md`；step-26 验收报告见 `docs/complete/step-26-acceptance.md`；**Phase A-G 综合复验报告见 `docs/complete/phase-a-g-acceptance.md`**（重点复验 Phase G，修复 step-24↔step-26 bridge smoke / `nul` 残留 / step-26 文档准确性 3 项）；Phase H step-27 验收报告见 `docs/complete/step-27-acceptance.md`（48 用例 PASS + smoke-step23/24/26 回归全过）；**Phase H step-28 验收报告见 `docs/complete/step-28-acceptance.md`**（76 用例 PASS + smoke-step18/20/22/23/24/26/27 回归全过 = 423 PASS / 0 FAIL）。
+当前阶段：**Phase A-I 全部完成构建并通过复验；step-30（端到端集成）已落地**。核心验收报告见 `docs/complete/phase-a-e-acceptance.md`、`docs/complete/phase-a-g-acceptance.md`、`docs/complete/step-27-acceptance.md`、`docs/complete/step-28-acceptance.md`、`docs/complete/step-29-acceptance.md`、`docs/complete/step-30-acceptance.md`。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -66,7 +66,7 @@ chovy-code/
 
 **已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行 + 5 内置角色）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 自实现 p-limit 并发限流 + 全局预算 sticky-trip 熔断 + 进度/生命周期 bus）、Judge 聚合（4 schema + provider fallback 链 + tryFixJSON 五步修复 + ≤1 次自我修复 + 大 N 截断 + 取消独立 AC）、Ink UI 面板（SwarmPanel + AgentRow + AgentDetail + HotkeyBar + swarmStore + outputBuffer + Tab 焦点 + 16ms 节流）、`/goal` 长程任务循环（GoalState 5-state + JSON 持久化 + Loop-driven Stop + rubric/command/hybrid 收敛 + 死循环兜底 + checkpoint per-5-rounds + GoalPanel + 3-way Tab 焦点 + headless 退出码）、**TMT 存储底层（4 类记忆 schema 冻结 + bun:sqlite + FTS5 unicode61 + BM25/mixed ranker + InMemoryStore 降级 + frontmatter+bullets parser + 增量 sync mtime 缓存 + forceRebuild + memoryFile/notesFile/progressFile + memory.index telemetry + chovy mem list/show/search/rebuild/stats）**、**Checkpoint Writer（CheckpointCoordinator 30s/reason 防抖 + 路径沙箱 via ToolContext.agentRole + 7 段 markdown 模板 + ≤50 归档轮转 + 规则化 fallback + checkpoint.written telemetry + /checkpoint now|list slash + goal-loop per-5-rounds 触发 + 取消独立 AC）**、**Context Monitor（自适应阈值 thresholds() PCM 单源 + 4chars/token×1.2 安全估算 + ContextMonitor 3-state fresh/soft/hard + 上转换 sticky max-level + soft 自动 maybeCheckpoint('token-soft') + `<context-pressure level=…>` system prompt 注入 + HeaderBar 实时 ctx % + soft黄/hard红着色 + onContextSnapshot/onUsage UI 回调 + CHOVY_CTX_DISABLE 开关 + context.threshold telemetry 单源）**。**Phase G 复验（`docs/complete/phase-a-g-acceptance.md`）闭合 step-24 ↔ step-26 bridge**：coordinator 写出的 `checkpoints/*.md` 经 `syncFromFiles` file-primary 路径落 MemoryStore（`layer=checkpoint`）+ FTS 可检索，已由 smoke-step26 §13 覆盖。
 
-**未实现**：跨会话注入（step-25，Phase G 第三步，明确留后——bridge 已就绪可直接 `syncProject`+`store.search` 接入）、上下文重建 step-28（hard 阈值后的 messages 截断 + 预算化 memory/checkpoint/notes 注入；step-27 已留 hook：queryEngine 在 hard 时 `logger.warn` 一次，rebuild 接入只需替换该分支）、技能图 CSG（step-29）、端到端集成（step-30）。
+**已完成**：跨会话记忆注入（step-25 glue via `memory/injection.ts` + `engine/memoryHook.ts`）、上下文重建 step-28、技能图 CSG step-29、端到端集成 step-30（USAGE/DEVELOPING/KNOWN-LIMITATIONS、demo、总 smoke、bench、mock E2E）。
 
 ---
 
@@ -819,7 +819,6 @@ chovy log tail                   # 看 telemetry
 1. Skill 类型字段名对齐 spec（drop 草稿别名）—— 草稿零 in-tree 消费方，spec 是 docs/ 权威。
 2. prompt 注入用 dynamic suffix（不用 default-layer append）—— 保 PSF staticHash 跨轮稳定，与 step-15 §15 不变量对齐。
 两处均与用户在 plan 阶段确认。
-
 
 
 

@@ -105,6 +105,7 @@ function resolveCtx(opts: CommonFlags): ResolvedCtx {
 }
 
 function assertProviderReady(provider: ProviderId): void {
+  if (process.env["CHOVY_E2E_USE_MOCK"] === "1") return;
   if (hasSecret(provider)) return;
   const label = safeProviderLabel(provider);
   logger.error(new ChovyError(
@@ -243,6 +244,60 @@ program
 //   rebuild: wipe + re-parse all source files (recovery from corrupt .db)
 //   stats  : record count + DB size + degraded flag
 const mem = program.command("mem").description("记忆操作（step-24 store；step-25 注入）");
+mem
+  .command("write <content...>")
+  .description("写入项目记忆或临时 notes，并立即更新 FTS 索引")
+  .option("--layer <l>", "target layer: project|notes (default notes)", "notes")
+  .option("--type <t>", "memory type: decision|rule|fact|pref|note|reference", "note")
+  .option("--importance <n>", "importance 0..100 (default 50)", parseIntOpt, 50)
+  .option("--tag <tag>", "add a tag (repeatable)", collect, [] as string[])
+  .action(async (
+    contentParts: string[],
+    options: { layer: string; type: string; importance: number; tag: string[] },
+    ...args: unknown[]
+  ) => {
+    resolveCtxFromActionArgs(args);
+    const content = contentParts.join(" ").trim();
+    const memory = await import("../memory/index.js");
+    const layer = options.layer as import("../types/index.js").MemoryLayer;
+    const type = options.type as import("../types/index.js").MemoryType;
+    if (!["project", "notes"].includes(layer)) {
+      logger.error(`mem write: --layer must be project or notes, got "${options.layer}"`);
+      process.exitCode = 1;
+      return;
+    }
+    if (!memory.MEMORY_TYPES.includes(type)) {
+      logger.error(`mem write: unknown --type "${options.type}"`);
+      process.exitCode = 1;
+      return;
+    }
+    if (content.length === 0) {
+      logger.error("mem write: content is required");
+      process.exitCode = 1;
+      return;
+    }
+    const importance = Math.max(0, Math.min(100, Math.round(options.importance)));
+    if (layer === "project") {
+      await memory.appendMemoryEntry(process.cwd(), {
+        section: sectionForMemoryType(type),
+        type,
+        importance,
+        content: formatTaggedContent(content, options.tag),
+      });
+    } else {
+      const existing = await memory.readNotesFile(process.cwd());
+      const body = appendTypedBullet(existing.content, "Notes", {
+        type,
+        importance,
+        content: formatTaggedContent(content, options.tag),
+      });
+      await memory.writeNotesFile(process.cwd(), body);
+    }
+    const store = await memory.createMemoryStore({ cwd: process.cwd() });
+    const synced = await memory.syncProject(process.cwd(), store);
+    logger.info(`memory written: ${layer}/${type} imp=${importance} (${synced.records} indexed)`);
+    store.close();
+  });
 mem
   .command("list")
   .description("列出记忆条目")
@@ -494,6 +549,45 @@ function parseIntOpt(value: string): number {
 
 function collect(value: string, prev: string[]): string[] {
   return [...prev, value];
+}
+
+function sectionForMemoryType(type: string): string {
+  switch (type) {
+    case "decision": return "Project Decisions";
+    case "rule": return "Rules";
+    case "pref": return "Preferences";
+    case "reference": return "References";
+    default: return "Facts";
+  }
+}
+
+function formatTaggedContent(content: string, tags: readonly string[]): string {
+  if (tags.length === 0) return content;
+  return `${content} #${tags.map((t) => t.replace(/\s+/g, "-")).join(" #")}`;
+}
+
+function appendTypedBullet(
+  raw: string,
+  section: string,
+  entry: { type: string; importance: number; content: string },
+): string {
+  const header = `## ${section}`;
+  const bullet = `- ${entry.type}(${entry.importance}): ${entry.content}`;
+  const lines = raw.replace(/^\uFEFF/, "").split(/\r?\n/);
+  const existing = lines.findIndex((line) => line.trim() === header);
+  if (existing < 0) {
+    const prefix = raw.trim().length > 0 ? raw.trimEnd() + "\n\n" : "";
+    return `${prefix}${header}\n\n${bullet}\n`;
+  }
+  let insertAt = lines.length;
+  for (let i = existing + 1; i < lines.length; i++) {
+    if (/^##+\s/.test(lines[i] ?? "")) {
+      insertAt = i;
+      break;
+    }
+  }
+  lines.splice(insertAt, 0, bullet);
+  return lines.join("\n");
 }
 
 function safeProviderLabel(id: ProviderId): string {

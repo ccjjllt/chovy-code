@@ -97,6 +97,7 @@ export function createOpenAICompatProvider(spec: OpenAICompatSpec): Provider {
     info: spec.info,
 
     assertReady(): void {
+      if (isE2eMockEnabled()) return;
       if (!getSecret(id)) {
         throw new ChovyError(
           "PROVIDER_NOT_READY",
@@ -108,6 +109,7 @@ export function createOpenAICompatProvider(spec: OpenAICompatSpec): Provider {
     },
 
     async complete(opts: ProviderRequestOptions): Promise<ChatCompletion> {
+      if (isE2eMockEnabled()) return mockCompletion(spec.info.label, opts);
       this.assertReady();
       const built = buildRequest(spec, opts, /* stream */ false);
       const json = await httpJson<OpenAIChatResponse>({
@@ -121,6 +123,12 @@ export function createOpenAICompatProvider(spec: OpenAICompatSpec): Provider {
     },
 
     async *stream(opts) {
+      if (isE2eMockEnabled()) {
+        const completion = mockCompletion(spec.info.label, opts);
+        if (completion.content) yield completion.content;
+        yield completion;
+        return;
+      }
       this.assertReady();
       const built = buildRequest(spec, opts, /* stream */ true);
       const stream = await httpStream({
@@ -150,6 +158,33 @@ export function createOpenAICompatProvider(spec: OpenAICompatSpec): Provider {
         if (recovered.text) yield recovered.text;
       }
       yield final;
+    },
+  };
+}
+
+function isE2eMockEnabled(): boolean {
+  return process.env["CHOVY_E2E_USE_MOCK"] === "1";
+}
+
+function mockCompletion(
+  label: string,
+  opts: ProviderRequestOptions,
+): ChatCompletion {
+  const lastUser = [...opts.messages].reverse().find((m) => m.role === "user");
+  const prompt = (lastUser?.content ?? "").replace(/\s+/g, " ").trim();
+  const toolLevels = (opts.toolSpecs ?? [])
+    .slice(0, 6)
+    .map((t) => `${t.name}:level=${t.level ?? "lean"}`)
+    .join(", ");
+  const content =
+    `[mock:${label}] ${prompt || "ok"}` +
+    (toolLevels ? `\n${toolLevels}` : "");
+  return {
+    content,
+    toolCalls: [],
+    usage: {
+      prompt: Math.max(1, Math.ceil((opts.systemPrompt?.length ?? 0) / 4)),
+      completion: Math.max(1, Math.ceil(content.length / 4)),
     },
   };
 }

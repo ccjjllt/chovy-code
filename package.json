@@ -14,6 +14,12 @@
     "build": "bun run scripts/build.ts",
     "start": "bun run src/cli/index.tsx",
     "typecheck": "tsc --noEmit",
+    "smoke": "bun run scripts/smoke.ts",
+    "bench": "bun run bench:tool-budget && bun run bench:memory-fts && bun run bench:swarm-100 && bun run bench:context-rebuild",
+    "bench:tool-budget": "bun run scripts/bench/tool-budget.bench.ts",
+    "bench:memory-fts": "bun run scripts/bench/memory-fts.bench.ts",
+    "bench:swarm-100": "bun run scripts/bench/swarm-100.bench.ts",
+    "bench:context-rebuild": "bun run scripts/bench/context-rebuild.bench.ts",
     "prepublishOnly": "bun run build"
   },
   "keywords": [

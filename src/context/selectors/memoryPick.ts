@@ -5,11 +5,9 @@
  * to the latest user prompt and renders them as a token-budgeted markdown
  * block.
  *
- * Spec line 64: "复用 step-25 selector". step-25 (memory injection) hasn't
- * shipped yet — when it does, it should refactor this file (or an
- * `injection.ts` peer) into a shared selector. Today's contract is
- * narrower: rebuilder-only, called inside the hard-threshold rebuild
- * pipeline, no caching, no relevance dedupe across rounds.
+ * Spec line 64: "复用 step-25 selector". Step-30 added
+ * `src/memory/injection.ts` for normal per-round prompt injection; this
+ * selector remains the rebuilder's narrow, no-cache path.
  *
  * Returns `null` when:
  *   - the store is unavailable / errors (degraded path is fine — no entry).

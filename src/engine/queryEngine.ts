@@ -6,33 +6,9 @@
  * forwards a single user prompt; everything new (sub-agents, swarm, goal
  * loop) calls `engine.run(opts)` directly.
  *
- * Pipeline per round (matches `docs/step-16-query-engine.md §主循环`):
- *
- *   1. assemble system prompt via `buildEffectiveSystemPrompt` (step-15);
- *   2. ATP-describe tools via `describeTools` (step-07);
- *   3. (TODO step-27/28) check SCW thresholds + rebuild;
- *   4. normalize message list for the active provider (step-17 wires the
- *      adapter; we always run the engine-side preprocess);
- *   5. emit `PreApiCall` hook + run provider (`stream` if available);
- *   6. record cost via `CostTracker`;
- *   7. push the assistant turn; if no tool calls → finalize;
- *   8. for every tool call: hook PreToolUse → permission gate → `tool.run`
- *      → hook PostToolUse → push tool message;
- *   9. honor abort: between rounds, between tool calls, and inside the
- *      provider stream (signal forwarded from `runStream`).
- *
- * Cancellation is best-effort: a single Esc / Ctrl+C aborts the signal
- * we forward into the provider; long-running tools see the same signal on
- * `ctx.abortSignal`. We wait at most `cancelGraceMs` for in-flight tools
- * to settle before returning `stopReason: 'cancelled'`.
- *
- * Design constraints (AGENTS.md §16 + §17):
- *   - Single source for `tool.call` telemetry stays in this file (the
- *     wrapper around `tool.run`); tools MUST NOT emit it themselves.
- *   - Sub-agents create their *own* AbortController (we accept any
- *     external `abortSignal` here but never share one across runs).
- *   - The frozen `PermissionEngine.preflight?` adapter on `ToolContext`
- *     binds `hasPermission` to live state; engine never touches globals.
+ * Per round: CSG → TMT memory → system prompt → ATP → SCW → provider →
+ * cost → assistant/tool turns. Helper modules own the bulky subflows so this
+ * file stays within the 600-line cap.
  */
 
 import { logger } from "../logger/index.js";
@@ -76,6 +52,7 @@ import { executeToolCall } from "./toolExecutor.js";
 import { createContextMonitorIfEnabled } from "./contextHook.js";
 import { runScwRound } from "./rebuildHook.js";
 import { runSkillRound } from "./skillHook.js";
+import { runMemoryRound } from "./memoryHook.js";
 import {
   buildSpawnHandles,
   fillBuildOptions,
@@ -340,6 +317,7 @@ export class QueryEngine {
     });
     let pendingPressure: PressureSnippet | undefined;
     let pendingBudget: { used: number; total: number } | undefined;
+    let memoryBannerShown = false;
 
     // Track for ATP relevance.
     let lastToolCalls: string[] = [];
@@ -390,6 +368,19 @@ export class QueryEngine {
           messages, session, agentRole: role, cwd, cfg: config,
           provider: opts.provider, model, goalObjective: opts.goalObjective,
         });
+        const memoryRound = await runMemoryRound({
+          messages, agentRole: role, cwd, cfg: config,
+          goalObjective: opts.goalObjective,
+          omitMemory: opts.systemPromptOpts?.agent?.omitMemory === true,
+        });
+        if (!memoryBannerShown && role === "main") {
+          if (memoryRound.entries > 0) {
+            log.info(`memory loaded: ${memoryRound.entries} entries`);
+          } else if (rounds === 0 && config.memory.enabled) {
+            log.info("memory empty: enable project memory with `chovy mem write \"...\"`");
+          }
+          memoryBannerShown = true;
+        }
 
         // ── 1. system prompt ──────────────────────────────────────────────
         // step-27: pendingPressure / live ctx-budget arrive from the previous
@@ -400,6 +391,7 @@ export class QueryEngine {
             provider: opts.provider, model, cwd,
             planMode: permState.mode === "plan",
             pressure: pendingPressure, contextBudget: pendingBudget,
+            memoryText: memoryRound.memoryText,
             loadedSkills: skillRound.loadedSkills,
             skillFragments: skillRound.skillFragments,
           }),

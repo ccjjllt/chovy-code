@@ -1,7 +1,7 @@
 /**
  * Public barrel for `src/memory/` (step-24 §产物).
  *
- * Higher-level modules (CLI, future step-25 injection, step-26 checkpoint
+ * Higher-level modules (CLI, step-25/30 injection, step-26 checkpoint
  * writer) import from this barrel rather than cherry-picking individual
  * files. Re-exports follow the AGENTS.md §16 single-source pattern: types
  * come from `src/types/memory.ts`, runtime is in `store.ts` / parser etc.
@@ -43,6 +43,31 @@ export {
   forceRebuild,
   type SyncResult,
 } from "./syncFromFiles.js";
+
+export {
+  buildMemoryPromptSegment,
+  type BuildMemoryPromptSegmentInput,
+  type BuildMemoryPromptSegmentResult,
+} from "./injection.js";
+
+export {
+  scoreMemoryRecord,
+  compareScoredMemory,
+  type MemoryScoreQuery,
+} from "./ranker.js";
+
+export {
+  selectMemoryRecords,
+  estimateTokens as estimateMemoryTokens,
+  type SelectMemoryInput,
+  type SelectMemoryOutput,
+} from "./selector.js";
+
+export {
+  renderMemoryPromptSegment,
+  type RenderMemorySegmentInput,
+  type RenderMemorySegmentOutput,
+} from "./promptSegment.js";
 
 export {
   readMemoryFile,

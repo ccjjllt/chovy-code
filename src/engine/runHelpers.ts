@@ -98,6 +98,9 @@ export async function runPreflight(
  *   - `runCtx.skillFragments` — body blocks for `## Active skills`.
  *   Both come from `runSkillRound` (`engine/skillHook.ts`), which reads
  *   `ToolSession.activeSkillFragments`.
+ *
+ * step-30 wires `runCtx.memoryText` from `engine/memoryHook.ts` into the
+ * existing `SystemContext.memoryText` slot frozen at step-15.
  */
 export function fillBuildOptions(
   opts: QueryRunOptions,
@@ -108,6 +111,7 @@ export function fillBuildOptions(
     planMode: boolean;
     pressure?: PressureSnippet;
     contextBudget?: ContextBudgetSnippet;
+    memoryText?: string;
     loadedSkills?: string[];
     skillFragments?: SkillFragmentsSnippet;
   },
@@ -117,6 +121,7 @@ export function fillBuildOptions(
       cwd: { cwd: runCtx.cwd },
       model: { provider: runCtx.provider, model: runCtx.model },
       planMode: runCtx.planMode,
+      ...(runCtx.memoryText ? { memoryText: runCtx.memoryText } : {}),
       ...(runCtx.pressure ? { pressure: runCtx.pressure } : {}),
       ...(runCtx.contextBudget ? { contextBudget: runCtx.contextBudget } : {}),
       ...(runCtx.loadedSkills && runCtx.loadedSkills.length > 0
