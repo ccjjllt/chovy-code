@@ -10,6 +10,8 @@ import { PaletteList } from "./PaletteList.js";
 import { usePaletteState, closePalette, movePaletteCursor, setPaletteQuery, type Group, type PaletteCommand } from "./state.js";
 import { filterAndSort } from "./search.js";
 import type { ReplCtx } from "../cli/slashCommands.js";
+import { recordEvent } from "../screens/onboarding.js";
+import { version } from "../version.js";
 
 function getCommands(_ctx: ReplCtx): PaletteCommand[] {
   return [
@@ -23,6 +25,7 @@ function getCommands(_ctx: ReplCtx): PaletteCommand[] {
 function execAt(flat: PaletteCommand[], index: number, ctx: ReplCtx) {
   const cmd = flat[index];
   if (cmd) {
+    recordEvent("palette", version);
     cmd.run(ctx);
     closePalette();
   }

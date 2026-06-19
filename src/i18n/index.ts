@@ -1,6 +1,8 @@
 import { loadConfig, saveConfigPatch } from "../config/index.js";
 import { emitTelemetry } from "../telemetry/index.js";
 import { logger } from "../logger/logger.js";
+import { recordEvent } from "../screens/onboarding.js";
+import { version } from "../version.js";
 import { flatten, resolveTemplate } from "./flatten.js";
 import { detectInitialPreference, detectSystemLocale } from "./detect.js";
 import { en } from "./locales/en.js";
@@ -73,6 +75,7 @@ export async function setLocale(next: LocalePreference | LocaleAlias | undefined
   // Persist if explicitly set by user and not just initialization
   if (next !== undefined) {
     saveConfigPatch({ i18n: { locale: preference } });
+    recordEvent("lang", version);
   }
 
   for (const l of _listeners) {

@@ -6,6 +6,7 @@ import { SplitPane } from "../tui/primitives/SplitPane.js";
 import { CompanionPlayer } from "../companion/index.js";
 import { resolveGifPath } from "../companion/skin.js";
 import { t } from "../i18n/index.js";
+import { useDynamicTips } from "./tips.js";
 import type { ProviderId } from "../types/index.js";
 import type { PermissionMode } from "../config/index.js";
 import * as path from "node:path";
@@ -63,16 +64,7 @@ function WelcomeMascotColumn({ provider, model, mode, cwd }: Props): React.React
   );
 }
 
-function useDynamicTips() {
-  // step-47 provides dynamic tips; static ones for now
-  return [
-    { icon: "", text: t("welcome.tips.palette") },
-    { icon: "", text: t("welcome.tips.settings") },
-    { icon: "", text: t("welcome.tips.lang") },
-    { icon: "", text: t("welcome.tips.buddy") },
-    { icon: "", text: t("welcome.tips.goal") },
-  ];
-}
+
 
 function WelcomeTipsColumn(): React.ReactElement {
   const theme = useTheme();

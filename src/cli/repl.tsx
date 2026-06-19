@@ -66,6 +66,16 @@ import { usePaletteState, openPalette } from "../palette/state.js";
 import { registerAllCommandSources } from "./commandSources.js";
 import { version } from "../version.js";
 import { WelcomeScreen } from "../screens/welcome.js";
+import { loadOnboarding, recordEvent } from "../screens/onboarding.js";
+
+
+function OnboardingHint() {
+  return (
+    <Box paddingX={1} paddingY={0}>
+      <Text dimColor>👋  按 Ctrl+P 打开命令面板，或者直接输入消息和 chovy 聊天～</Text>
+    </Box>
+  );
+}
 
 interface Props {
   provider: ProviderId;
@@ -136,6 +146,10 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   const welcomeDismissedRef = useRef(false);
   const showWelcome = !welcomeDismissedRef.current
     && messages.length <= 1 && messages[0]?.role === "system";
+
+  const [onboardingShow, setOnboardingShow] = useState(() => {
+    return loadOnboarding().firstActionAt === undefined;
+  });
 
   useEffect(() => {
     if (messages.length > 1) welcomeDismissedRef.current = true;
@@ -626,6 +640,11 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     const t = text.trim();
     if (t.length === 0) return;
 
+    if (onboardingShow) {
+      recordEvent("firstAction", version);
+      setOnboardingShow(false);
+    }
+
     // Push to history (dedupe last entry).
     setHistory((h) => (h[h.length - 1] === t ? h : [...h, t]));
 
@@ -716,7 +735,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
       setBusy(false);
       setTool(undefined);
     }
-  }, [model, provider, runSlash, mode]);
+  }, [model, provider, runSlash, mode, onboardingShow]);
 
   const onCancel = useCallback(() => {
     if (busy) {
@@ -773,6 +792,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
           swarm={swarmSummary}
           goal={goalSummary}
         />
+
+        {onboardingShow ? <OnboardingHint /> : null}
 
         {showGoalPanel && goalState ? (
           <Box marginTop={1}>

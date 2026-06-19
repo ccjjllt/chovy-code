@@ -1,5 +1,4 @@
 import { render } from 'ink';
-import React from 'react';
 import { HeaderBar } from '../src/cli/components/HeaderBar.js';
 import { setTheme } from '../src/theme/index.js';
 import { TerminalCapsContext } from '../src/tui/capabilities.js';

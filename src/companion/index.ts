@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { getCompanionStateMachine } from "./stateMachine.js";
 import { companionBus } from "./stateBus.js";
 
+import { recordEvent } from "../screens/onboarding.js";
+import { version } from "../version.js";
+
 export * from "./types.js";
 export * from "./cache.js";
 export * from "./player.js";
@@ -53,7 +56,10 @@ export function mountCompanion(opts: { cwd: string; muted?: boolean }): Companio
   if (opts.muted) setUserCompanionMuted(true);
   return {
     setState: (s) => sm.setState(s),
-    pet: () => companionBus.emit({ type: "pet" }),
+    pet: () => {
+      recordEvent("buddy", version);
+      companionBus.emit({ type: "pet" });
+    },
     mute: (b) => setUserCompanionMuted(b),
     skin: (n) => setUserSkin(n),
     dispose: () => sm.dispose(),
