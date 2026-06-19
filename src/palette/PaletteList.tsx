@@ -13,10 +13,10 @@ export function PaletteList({ grouped, selectedIndex }: { grouped: Group[]; sele
       {grouped.map((g, gi) => (
         <Box key={gi} flexDirection="column" marginTop={gi === 0 ? 0 : 1}>
           <Text bold color={theme.primary}>{t(`palette.section.${g.id}`)}</Text>
-          {g.items.map(item => {
+          {g.items.map(({ item, result }) => {
             const isSel = cursor === selectedIndex;
             cursor += 1;
-            return <PaletteRow key={item.id} item={item} selected={isSel} />;
+            return <PaletteRow key={item.id} item={item} selected={isSel} result={result} />;
           })}
         </Box>
       ))}

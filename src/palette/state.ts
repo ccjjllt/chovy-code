@@ -5,16 +5,18 @@ export interface PaletteCommand {
   label: () => string;
   hotkey?: string;
   run: (ctx: any) => void | Promise<void>;
+  category?: string;
 }
 
 export interface Group {
   id: string;
-  items: PaletteCommand[];
+  items: { item: PaletteCommand; result: import("./search.js").MatchResult }[];
 }
 
 export interface PaletteState {
   open: boolean;
   query: string;
+  rawQuery: string;
   selectedIndex: number;
 }
 
@@ -40,6 +42,7 @@ function createStore<T>(initialState: T) {
 export const _store = createStore<PaletteState>({
   open: false,
   query: "",
+  rawQuery: "",
   selectedIndex: 0,
 });
 
@@ -48,15 +51,21 @@ export function usePaletteState(): PaletteState {
 }
 
 export function openPalette() {
-  _store.setState((s) => ({ ...s, open: true, query: "", selectedIndex: 0 }));
+  _store.setState((s) => ({ ...s, open: true, query: "", rawQuery: "", selectedIndex: 0 }));
 }
 
 export function closePalette() {
   _store.setState((s) => ({ ...s, open: false }));
 }
 
+let _searchTimer: ReturnType<typeof setTimeout> | undefined;
+
 export function setPaletteQuery(q: string) {
-  _store.setState((s) => ({ ...s, query: q, selectedIndex: 0 }));
+  _store.setState((s) => ({ ...s, rawQuery: q }));
+  if (_searchTimer) clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => {
+    _store.setState((s) => ({ ...s, query: q, selectedIndex: 0 }));
+  }, 80);
 }
 
 export function movePaletteCursor(dir: -1 | 1) {

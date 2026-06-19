@@ -58,6 +58,11 @@ export function chovyTelemetryDir(): string {
   return join(chovyHome(), "telemetry");
 }
 
+/** Directory for ephemeral data that can be safely deleted (e.g. MRU). */
+export function chovyCacheDir(): string {
+  return join(chovyHome(), "cache");
+}
+
 // ---------------------------------------------------------------------------
 // ensureHomeDirs — idempotent
 // ---------------------------------------------------------------------------
@@ -81,6 +86,7 @@ export function ensureHomeDirs(): void {
   mkdirSync(chovySecretsDir(), { recursive: true });
   mkdirSync(chovyProjectsDir(), { recursive: true });
   mkdirSync(chovyTelemetryDir(), { recursive: true });
+  mkdirSync(chovyCacheDir(), { recursive: true });
 
   homeEnsuredFor = home;
 }
