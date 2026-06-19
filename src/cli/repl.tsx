@@ -6,7 +6,7 @@ import { listProviders } from "../providers/index.js";
 import { logger } from "../logger/index.js";
 import type { ProviderId } from "../types/index.js";
 import type { PermissionMode } from "../config/index.js";
-import { HeaderBar, type BudgetSnapshot, type SwarmSummary } from "./components/HeaderBar.js";
+import { HeaderBar, type BudgetSnapshot, type SwarmSummary, type GoalChipSnapshot } from "./components/HeaderBar.js";
 import { MessageList, type UIMessage } from "./components/MessageList.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";
 import { StatusLine } from "./components/StatusLine.js";
@@ -164,6 +164,15 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   const showGoalPanel = !panelDisabled && goalState !== null;
   const swarmSummary: SwarmSummary | undefined = swarm.agents.length > 0
     ? swarmCounts(swarm.agents)
+    : undefined;
+
+  const goalSummary: GoalChipSnapshot | undefined = goalState
+    ? {
+        rounds: goalState.rounds,
+        status: goalState.status as "active" | "paused",
+        budgetUsed: goalState.totalCostUSD,
+        budgetCap: goalState.budgetUSD,
+      }
     : undefined;
 
   // 3-way focus cycle: "input" → "swarm" → "goal" → "input". Only visible
@@ -762,6 +771,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
           model={model}
           budget={budget}
           swarm={swarmSummary}
+          goal={goalSummary}
         />
 
         {showGoalPanel && goalState ? (

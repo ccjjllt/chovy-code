@@ -30,6 +30,7 @@ export const zh = {
   header: {
     cost: "花费 {{ cost }}",
     ctx: "上下文 {{ pct }}%",
+    goal: "目标 R{{ rounds }} ${{ used }}{{ cap }}",
     mode: { default: "default 模式", plan: "plan 模式", acceptEdits: "acceptEdits 模式", auto: "auto 模式", bypassPermissions: "bypass 模式" },
   },
   hotkey: {

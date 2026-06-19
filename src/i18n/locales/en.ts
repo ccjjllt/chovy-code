@@ -30,6 +30,7 @@ export const en = {
   header: {
     cost: "Cost {{ cost }}",
     ctx: "Context {{ pct }}%",
+    goal: "Goal R{{ rounds }} ${{ used }}{{ cap }}",
     mode: { default: "default mode", plan: "plan mode", acceptEdits: "acceptEdits mode", auto: "auto mode", bypassPermissions: "bypass mode" },
   },
   hotkey: {
