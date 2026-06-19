@@ -11,7 +11,12 @@ export interface BadgeProps {
 
 export function Badge({ variant, children }: BadgeProps) {
   const theme = useTheme();
-  
+  const isNoTui = process.env.CHOVY_NO_TUI === '1';
+
+  if (isNoTui) {
+    return <Text>[{children}]</Text>;
+  }
+
   let color = theme.fg;
   switch (variant) {
     case "success": color = theme.success; break;

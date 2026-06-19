@@ -7,10 +7,11 @@ export interface OverlayHostProps {
 }
 
 export function OverlayHost({ active, children }: OverlayHostProps) {
+  const isNoTui = process.env.CHOVY_NO_TUI === '1';
   return (
     <Box
       display={active ? "flex" : "none"}
-      borderStyle="double"
+      borderStyle={isNoTui ? undefined : "double"}
       flexDirection="column"
       flexGrow={1}
       width="100%"

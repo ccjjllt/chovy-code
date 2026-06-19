@@ -11,3 +11,5 @@
 - Context rebuild archives full message history to local JSONL, but there is no first-class CLI to search session archives yet.
 - Skill auto-planning is opt-in via `CHOVY_SKILLS_AUTO=1` or `feature('skills.auto')`; manual skill activation works by default.
 - Bench thresholds are reference numbers, not hard CI gates; slow disks or Windows process startup may print `WARN`.
+- **老 cmd.exe 显示降级**：真彩色探测不准，Windows ConHost 旧版本不支持 24-bit 但 `COLORTERM` 可能误报；`inkColor` 兜底使用 16-color 显示。
+- **Windows `Ctrl+,` 键位丢失**：部分老旧 Windows 终端可能会将 `Ctrl+,` 吞掉。Windows Terminal 不受影响，老版 ConHost 用户可自定义为 `Ctrl+;`。

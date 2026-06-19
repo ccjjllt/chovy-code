@@ -6,8 +6,9 @@ export interface CardProps {
 }
 
 export function Card({ children, padding = 1 }: CardProps) {
+  const isNoTui = process.env.CHOVY_NO_TUI === '1';
   return (
-    <Box padding={padding}>
+    <Box padding={isNoTui ? 0 : padding}>
       {children}
     </Box>
   );

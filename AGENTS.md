@@ -49,3 +49,7 @@
 5. 自己的 `docs/tui/step-XX-<slug>.md` — 详细产物 / 接口签名 / 验收。
 
 > 不读 `docs/tui/` 直接动手会大概率跑偏——本阶段同样是「先有计划，再有代码」。
+
+### 完成与验收记录
+
+- **Phase J**: [x] 基础设施阶段已验收，B8 屏障已冻结，Theme/Locale/KeyBinding/ComponentKit 已就位。修复了 CHOVY_NO_TUI=1 全局组件兜底模式。（见 `docs/complete/phase-j-acceptance.md`）

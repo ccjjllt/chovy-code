@@ -10,6 +10,13 @@ export interface DividerProps {
 export function Divider({ label, thick }: DividerProps) {
   const theme = useTheme();
   const caps = useTerminalCaps();
+  const isNoTui = process.env.CHOVY_NO_TUI === '1';
+  
+  if (isNoTui) {
+    if (label) return <Text dimColor>--- {label} ---</Text>;
+    return <Text dimColor>---</Text>;
+  }
+
   const char = thick ? '━' : '─';
   const width = caps.cols > 0 ? caps.cols : 80;
   const line = char.repeat(width);
