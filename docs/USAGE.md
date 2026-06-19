@@ -21,6 +21,7 @@ CHOVY_E2E_USE_MOCK=1 OPENAI_API_KEY=mock bun run smoke
 chovy                         # 进入交互式 REPL
 chovy "解释当前目录"           # 一次性 prompt
 chovy chat "say hi"           # 显式一次性 prompt
+chovy config                  # 交互式配置 provider/model/permission/key
 chovy goal "让 typecheck 通过" --cmd "bun run typecheck"
 chovy mem list
 chovy mem write "we use Bun + Ink" --layer project --type decision --importance 90
@@ -48,6 +49,24 @@ chovy log tail
 1. 环境变量，例如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`。
 2. `~/.chovy/secrets/<provider>` 明文文件。
 
+首次配置推荐使用：
+
+```bash
+chovy config
+```
+
+非交互脚本可用：
+
+```bash
+chovy config --non-interactive \
+  --provider glm \
+  --model glm-4.5 \
+  --permission-mode default \
+  --key "$GLM_API_KEY"
+```
+
+`chovy config` 只把普通配置写入 `~/.chovy/config.json`，API key 只写入 `~/.chovy/secrets/<provider>`，摘要中只显示 `configured` / `missing`，不会打印 key 明文。
+
 可用 `CHOVY_E2E_USE_MOCK=1` 跑离线 mock provider，适合 smoke/demo/CI。
 
 ## Slash Commands
@@ -64,6 +83,7 @@ REPL 内常用：
 | `/skill <name>` | 手动激活技能 |
 | `/skill clear` | 清空手动技能 |
 | `/provider` | 查看或切换 provider |
+| `/config` | 打开同一套配置向导 |
 | `/mode` | 查看或切换权限模式 |
 | `/quit` | 退出 |
 
@@ -126,6 +146,14 @@ chovy goal "让项目通过 typecheck" --cmd "bun run typecheck" --max-rounds 25
 硬安全规则包括：不改 shell/git/secrets 配置，不碰 `.git/`，不使用 `--no-verify`，不 force push。
 
 ## Configuration
+
+交互式入口：
+
+```bash
+chovy config
+```
+
+在 REPL 中也可以输入 `/config`。如果 REPL 已经启动，provider/model 的 UI 显示可能要等重启后才完全反映新配置。
 
 配置合并优先级：
 

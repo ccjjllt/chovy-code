@@ -19,6 +19,7 @@ bun run build
 - 不修改 `bin/chovy.js` 和 `.map`，它们是构建产物。
 - 不引入 GrowthBook、Docker/VM sandbox、TEAMMEM、Anthropic-only prompt-cache 价格优化。
 - 不复刻 cc-haha 全量代码；只借鉴设计，并保留 chovy 的 ATP/SwarmR/TMT/SCW/CSG 主线。
+- 配置入口必须保持 API key 只进 `~/.chovy/secrets/<provider>`；不要写入 `config.json`、日志、telemetry 或文档示例输出。
 
 ## 目录导览
 
@@ -35,6 +36,17 @@ bun run build
 | `src/skills/` | CSG registry、graph、planner、bundled skills |
 | `src/cli/` | Commander 命令、Ink REPL、slash commands |
 | `scripts/` | smoke、bench、demo、step 验收脚本 |
+
+## 配置入口
+
+`chovy config` 和 REPL `/config` 共用 `src/cli/configWizard.ts`。该向导只更新用户选择的 `provider`、`model`、`permissionMode`，保留 `swarm` / `memory` / `context` 等已有配置；API key 始终写入 `~/.chovy/secrets/<provider>`，文件内容只包含 key 本身且不追加换行。
+
+非交互场景必须显式传 `--non-interactive`，否则不能等待 stdin。相关验证在 `bun run smoke` 中覆盖：
+
+- `chovy config --help`
+- `chovy config --non-interactive --provider ... --model ... --key ...`
+- stdout/stderr 不包含 key 明文
+- `bin/chovy.js` 哈希不变
 
 ## 新增 Provider
 

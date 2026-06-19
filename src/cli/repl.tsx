@@ -23,7 +23,9 @@ import {
   type ReplSkillRuntime,
   type ReplSkillListItem,
   type ReplSkillPlanDryRun,
+  type ReplConfigRuntime,
 } from "./slashCommands.js";
+import { runConfigWizard } from "./configWizard.js";
 import {
   createGoal,
   finalizeGoal,
@@ -399,6 +401,12 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     },
   }), [messages, goalState, model, provider]);
 
+  const configRuntime: ReplConfigRuntime = useMemo(() => ({
+    run: async (): Promise<void> => {
+      await runConfigWizard();
+    },
+  }), []);
+
   const ctx: ReplCtx = useMemo(() => ({
     setMode: (m) => setMode(m),
     appendSystem,
@@ -429,7 +437,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     goal: goalRuntime,
     checkpoint: checkpointRuntime,
     skill: skillRuntime,
-  }), [appendSystem, exit, goalRuntime, checkpointRuntime, skillRuntime]);
+    config: configRuntime,
+  }), [appendSystem, exit, goalRuntime, checkpointRuntime, skillRuntime, configRuntime]);
 
   const runSlash = useCallback(async (line: string): Promise<void> => {
     const trimmed = line.replace(/^\//, "");

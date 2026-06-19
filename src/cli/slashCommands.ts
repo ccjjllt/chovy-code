@@ -45,6 +45,8 @@ export interface ReplCtx {
    * the engine reads on the next round).
    */
   skill?: ReplSkillRuntime;
+  /** Run the same config wizard used by `chovy config`. */
+  config?: ReplConfigRuntime;
 }
 
 /**
@@ -126,6 +128,10 @@ export interface ReplSkillRuntime {
   activate(name: string, args?: string): Promise<string>;
   /** Clear all manual + auto activations from the session. */
   clear(): Promise<void>;
+}
+
+export interface ReplConfigRuntime {
+  run(): Promise<void>;
 }
 
 export type SlashHandler = (args: string, ctx: ReplCtx) => Promise<void> | void;
@@ -213,6 +219,20 @@ export const slashCommands: Record<string, SlashEntry> = {
     help: "列出已注册 provider",
     handler: (_args, ctx) => {
       ctx.appendSystem(ctx.listProviders().join(", "));
+    },
+  },
+
+  config: {
+    help: "打开交互式配置向导",
+    handler: async (_args, ctx) => {
+      if (!ctx.config) {
+        ctx.appendSystem("/config 暂不可用：配置向导未接入当前 REPL。");
+        return;
+      }
+      await ctx.config.run();
+      ctx.appendSystem(
+        "配置已保存。当前 REPL 已启动的 provider/model 显示可能不会立刻切换；重启 REPL 后会读取新配置。",
+      );
     },
   },
 };

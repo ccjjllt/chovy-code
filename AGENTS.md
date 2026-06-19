@@ -836,3 +836,14 @@ chovy log tail                   # 看 telemetry
 - Phase H-I 重点复验：`bun run scripts/smoke-step27.ts`、`bun run scripts/smoke-step28.ts`、`bun run scripts/smoke-step29.ts`。
 - Bench 输出 `WARN` 不阻断；typecheck、smoke、demo 失败应阻断。
 - `queryEngine.ts ≤ 600 行` 仍是硬限；行数口径以 `scripts/smoke-step29.ts` 的 `trimEnd().split(/\r?\n/)` 为准。
+
+## 26. 配置入口不变量（CLI / REPL）
+
+> `chovy config` 与 REPL `/config` 是 provider/model/permission/API key 的统一交互式配置入口。
+
+- API key **只**写入 `~/.chovy/secrets/<provider>`，文件内容只包含 key 本身且不追加换行；普通配置只写入 `~/.chovy/config.json`。
+- `config.json` 中不得写入 `apiKey` / `secret` 类字段；配置向导写入时必须清理这类历史误配字段，同时保留 `swarm` / `memory` / `context` 等已有合法配置。
+- 输出、日志、telemetry、文档示例和 smoke 失败信息都不得打印真实 key 明文；摘要只显示 `configured` / `missing`。
+- provider 的 API key 环境变量名必须复用 `src/config/secrets.ts:envKeyFor(provider)` / `ENV_KEYS`，不要在 CLI、REPL 或文档生成逻辑中重复硬编码映射。
+- 非 TTY 下 `chovy config` 不能等待 stdin；必须给出清晰错误，并提示手动编辑 `~/.chovy/config.json` 与 `~/.chovy/secrets/<provider>`，或使用 `--non-interactive`。
+- 不引入 keychain、远程服务、网络请求或新依赖；不修改 `bin/chovy.js` / `bin/chovy.js.map` 构建产物。
