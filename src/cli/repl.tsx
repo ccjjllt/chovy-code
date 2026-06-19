@@ -24,6 +24,8 @@ import {
   type ReplSkillListItem,
   type ReplSkillPlanDryRun,
   type ReplConfigRuntime,
+  type ReplMemRuntime,
+  type ReplMemListItem,
 } from "./slashCommands.js";
 import { runConfigWizard } from "./configWizard.js";
 import {
@@ -35,6 +37,12 @@ import {
   type RunGoalResult,
 } from "../goals/index.js";
 import { getCheckpointCoordinator } from "../memory/index.js";
+import {
+  createMemoryStore,
+  syncProject,
+} from "../memory/index.js";
+import type { MemoryLayer, MemoryType } from "../types/index.js";
+import { MEMORY_LAYERS, MEMORY_TYPES } from "../types/index.js";
 import { checkpointDir } from "../fs/paths.js";
 import { safeFs } from "../fs/safeFs.js";
 import { getCapability } from "../providers/capabilities.js";
@@ -407,6 +415,100 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     },
   }), []);
 
+  // ── step-24/25: REPL memory runtime injected into ReplCtx.mem ─────────────
+  // Each call opens a fresh, file-synced MemoryStore (cwd-bound) and closes it
+  // after formatting — mirrors the `chovy mem ...` CLI path. Output formatting
+  // matches the CLI verbatim so REPL and headless read identically.
+  const memRuntime: ReplMemRuntime = useMemo(() => ({
+    list: async (opts): Promise<ReplMemListItem[]> => {
+      const store = await createMemoryStore({ cwd: process.cwd() });
+      try {
+        await syncProject(process.cwd(), store);
+        const filter: {
+          layer?: MemoryLayer;
+          type?: MemoryType;
+          limit?: number;
+          projectId: string;
+        } = { projectId: store.projectId };
+        if (opts.layer && (MEMORY_LAYERS as readonly string[]).includes(opts.layer)) {
+          filter.layer = opts.layer as MemoryLayer;
+        }
+        if (opts.type && (MEMORY_TYPES as readonly string[]).includes(opts.type)) {
+          filter.type = opts.type as MemoryType;
+        }
+        filter.limit = opts.limit ?? 20;
+        const rows = await store.list(filter);
+        return rows.map((r) => {
+          const tags = r.tags.length > 0 ? ` [${r.tags.join(",")}]` : "";
+          const head = r.content.replace(/\s+/g, " ").slice(0, 120);
+          return {
+            line: `${r.id}  ${r.layer.padEnd(10)} ${r.type.padEnd(10)} imp=${String(r.importance).padStart(3)}  ${head}${tags}`,
+          };
+        });
+      } finally {
+        store.close();
+      }
+    },
+    show: async (id) => {
+      const store = await createMemoryStore({ cwd: process.cwd() });
+      try {
+        const rows = await store.list({ projectId: store.projectId, limit: 10_000 });
+        const found = rows.find((r) => r.id === id);
+        if (!found) return { found: false };
+        const block = [
+          `layer      ${found.layer}`,
+          `type       ${found.type}`,
+          `importance ${found.importance}`,
+          `source     ${found.sourcePath}${found.sourceLine ? `:${found.sourceLine}` : ""}`,
+          `tags       ${found.tags.join(", ")}`,
+          `updated    ${new Date(found.updatedAt).toISOString()}`,
+          "---",
+          found.content,
+        ].join("\n");
+        return { found: true, block };
+      } finally {
+        store.close();
+      }
+    },
+    search: async (query, opts) => {
+      const store = await createMemoryStore({ cwd: process.cwd() });
+      try {
+        await syncProject(process.cwd(), store);
+        const memQuery: import("../types/index.js").MemoryQuery = {
+          text: query,
+          ranker: opts.bm25 ? "bm25" : "mixed",
+          limit: opts.limit ?? 10,
+        };
+        if (opts.layer && (MEMORY_LAYERS as readonly string[]).includes(opts.layer)) {
+          memQuery.layers = [opts.layer as MemoryLayer];
+        }
+        const rows = await store.search(memQuery);
+        return rows.map((r) => {
+          const head = r.content.replace(/\s+/g, " ").slice(0, 140);
+          const score = r.score !== undefined ? `score=${r.score.toFixed(3)} ` : "";
+          return { line: `${score}${r.id}  ${r.layer}/${r.type} imp=${r.importance}  ${head}` };
+        });
+      } finally {
+        store.close();
+      }
+    },
+    stats: async () => {
+      const store = await createMemoryStore({ cwd: process.cwd() });
+      try {
+        const c = await store.count({ projectId: store.projectId });
+        const block = [
+          `records   ${c}`,
+          `path      ${store.path}`,
+          `projectId ${store.projectId}`,
+          `degraded  ${store.degraded ? "true (bun:sqlite missing)" : "false"}`,
+        ].join("\n");
+        return { block };
+      } finally {
+        store.close();
+      }
+    },
+  }), []);
+
   const ctx: ReplCtx = useMemo(() => ({
     setMode: (m) => setMode(m),
     appendSystem,
@@ -438,7 +540,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     checkpoint: checkpointRuntime,
     skill: skillRuntime,
     config: configRuntime,
-  }), [appendSystem, exit, goalRuntime, checkpointRuntime, skillRuntime, configRuntime]);
+    mem: memRuntime,
+  }), [appendSystem, exit, goalRuntime, checkpointRuntime, skillRuntime, configRuntime, memRuntime]);
 
   const runSlash = useCallback(async (line: string): Promise<void> => {
     const trimmed = line.replace(/^\//, "");

@@ -4,6 +4,7 @@ import type { GoalState } from "../types/index.js";
 import { goalSlashEntry } from "./slashCommands/goal.js";
 import { checkpointSlashEntry } from "./slashCommands/checkpoint.js";
 import { skillSlashEntry } from "./slashCommands/skill.js";
+import { memSlashEntry } from "./slashCommands/mem.js";
 
 /**
  * Read-only/mutator surface that slash command handlers receive. Keeping
@@ -47,6 +48,12 @@ export interface ReplCtx {
   skill?: ReplSkillRuntime;
   /** Run the same config wizard used by `chovy config`. */
   config?: ReplConfigRuntime;
+  /**
+   * step-24/25: memory store runtime injected by the REPL. Absent in
+   * non-REPL contexts — `/mem` reports a clean error when undefined.
+   * UI-only; the runtime closes over cwd and opens a fresh store per call.
+   */
+  mem?: ReplMemRuntime;
 }
 
 /**
@@ -134,6 +141,48 @@ export interface ReplConfigRuntime {
   run(): Promise<void>;
 }
 
+/**
+ * Pre-formatted row for `/mem list` (memory store already formats the header
+ * line; the slash handler just `appendSystem`s the joined block). Mirrors the
+ * `chovy mem list` logger output so REPL and CLI read identically.
+ */
+export interface ReplMemListItem {
+  /** Fully formatted single-line summary, e.g. `mem_xxx  project     decision    imp= 80  ...`. */
+  line: string;
+}
+
+export interface ReplMemShowResult {
+  found: boolean;
+  /** Multi-line pretty-print when found, empty when not. */
+  block?: string;
+}
+
+export interface ReplMemStatsResult {
+  /** Multi-line block, e.g. `records   42\npath      ...\nprojectId ...\ndegraded  false`. */
+  block: string;
+}
+
+/**
+ * Runtime hooks for `/mem` (step-24/25). UI-only — the handler imports
+ * nothing from the engine/providers; the REPL closes over the live cwd and
+ * opens a fresh `MemoryStore` per call (synced from source files). Mirrors
+ * `ReplCheckpointRuntime` / `ReplSkillRuntime` (AGENTS.md §16 leaf pattern).
+ */
+export interface ReplMemRuntime {
+  list(opts: {
+    layer?: string;
+    type?: string;
+    limit?: number;
+  }): Promise<ReplMemListItem[]>;
+  show(id: string): Promise<ReplMemShowResult>;
+  search(query: string, opts: {
+    bm25?: boolean;
+    limit?: number;
+    layer?: string;
+  }): Promise<ReplMemListItem[]>;
+  stats(): Promise<ReplMemStatsResult>;
+}
+
 export type SlashHandler = (args: string, ctx: ReplCtx) => Promise<void> | void;
 
 export interface SlashEntry {
@@ -190,12 +239,7 @@ export const slashCommands: Record<string, SlashEntry> = {
 
   checkpoint: checkpointSlashEntry,
 
-  mem: {
-    help: "记忆操作 list/show/search（TODO step-24/25）",
-    handler: (_args, ctx) => {
-      ctx.appendSystem("记忆系统尚未接入（step-24/25 完成后启用）。");
-    },
-  },
+  mem: memSlashEntry,
 
   agents: {
     help: "列出活跃子 agent（step-22）",
