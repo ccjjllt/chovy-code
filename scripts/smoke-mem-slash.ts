@@ -145,17 +145,17 @@ console.log("[8] unknown subcommand → usage");
 console.log("[9] flag parsing (--layer / --limit)");
 {
   // Stub that records what opts it received.
-  let receivedOpts: { layer?: string; limit?: number } | null = null;
+  const receivedOpts: { layer?: string; limit?: number } = {};
   const rt: ReplMemRuntime = {
-    async list(opts) { receivedOpts = opts; return []; },
+    async list(opts) { Object.assign(receivedOpts, opts); return []; },
     async show() { return { found: false }; },
     async search() { return []; },
     async stats() { return { block: "" }; },
   };
   const { ctx } = makeCtx(rt);
   await slashCommands["mem"]!.handler("list --layer project --limit 5", ctx);
-  check("9a. layer flag parsed", receivedOpts?.layer === "project");
-  check("9b. limit flag parsed", receivedOpts?.limit === 5);
+  check("9a. layer flag parsed", receivedOpts.layer === "project");
+  check("9b. limit flag parsed", receivedOpts.limit === 5);
 }
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
