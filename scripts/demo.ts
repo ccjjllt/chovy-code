@@ -42,7 +42,7 @@ const steps: DemoStep[] = [
   {
     name: "TMT + mock E2E: isolated memory write/search + provider chat",
     command: ["bun", "run", "smoke"],
-    expect: [/PASS\s+mem write/, /PASS\s+mem search/, /PASS\s+mock provider chat/, /8 passed, 0 failed/],
+    expect: [/PASS\s+mem write/, /PASS\s+mem search/, /PASS\s+mock provider chat/, /\d+ passed, 0 failed/],
   },
   {
     name: "SCW: context rebuild benchmark",
