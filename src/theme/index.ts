@@ -84,4 +84,10 @@ export function onThemeChange(fn: (t: Theme) => void): () => void {
   return () => _listeners.delete(fn);
 }
 
+import { useSyncExternalStore } from "react";
+
+export function useTheme(): Theme {
+  return useSyncExternalStore(onThemeChange, getTheme);
+}
+
 export type { Theme };

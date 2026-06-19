@@ -32,4 +32,20 @@ export const zh = {
     ctx: "上下文 {{ pct }}%",
     mode: { default: "default 模式", plan: "plan 模式", acceptEdits: "acceptEdits 模式", auto: "auto 模式", bypassPermissions: "bypass 模式" },
   },
+  hotkey: {
+    modifier: {
+      ctrl: "Ctrl",
+      shift: "Shift",
+      alt: "Alt",
+      meta: "Meta",
+      esc: "ESC",
+      enter: "回车",
+      space: "空格",
+      tab: "Tab",
+      up: "↑",
+      down: "↓",
+      left: "←",
+      right: "→",
+    }
+  }
 } as const;

@@ -62,6 +62,9 @@ const I18nSchema = z.object({
   costInCNY: z.boolean().default(false),
 });
 
+const KeybindingsSchema = z.record(z.string().nullable()).optional();
+
+
 const ConfigSchema = z.object({
   provider: z.enum(PROVIDER_IDS).default("openai"),
   model: z.string().optional(),
@@ -74,6 +77,7 @@ const ConfigSchema = z.object({
   context: ContextSchema.default({}),
   theme: ThemeSchema.default({}),
   i18n: I18nSchema.default({}),
+  keybindings: KeybindingsSchema.default({}),
 });
 
 export type ChovyConfig = z.infer<typeof ConfigSchema>;
@@ -94,6 +98,7 @@ export type PartialConfig = {
   context?: Partial<ChovyConfig["context"]>;
   theme?: Partial<ChovyConfig["theme"]>;
   i18n?: Partial<ChovyConfig["i18n"]>;
+  keybindings?: Partial<ChovyConfig["keybindings"]>;
 };
 
 // ---------------------------------------------------------------------------
@@ -202,6 +207,11 @@ function readEnvLayer(env: NodeJS.ProcessEnv): PartialConfig {
   if (costInCNY !== undefined) i18n.costInCNY = costInCNY;
   if (Object.keys(i18n).length > 0) out.i18n = i18n;
 
+  const keybindings: PartialConfig["keybindings"] = {};
+  // For keybindings, we generally do not read env overrides because it's a dynamic record
+  // and we don't have a fixed schema for it.
+  if (Object.keys(keybindings).length > 0) out.keybindings = keybindings;
+
   return out;
 }
 
@@ -216,7 +226,7 @@ function mergeLayer(base: PartialConfig, over: PartialConfig): PartialConfig {
     const v = over[key];
     if (v === undefined) continue;
     if (
-      (key === "swarm" || key === "memory" || key === "context" || key === "theme" || key === "i18n") &&
+      (key === "swarm" || key === "memory" || key === "context" || key === "theme" || key === "i18n" || key === "keybindings") &&
       typeof v === "object" &&
       v !== null
     ) {

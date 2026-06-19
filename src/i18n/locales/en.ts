@@ -32,4 +32,20 @@ export const en = {
     ctx: "Context {{ pct }}%",
     mode: { default: "default mode", plan: "plan mode", acceptEdits: "acceptEdits mode", auto: "auto mode", bypassPermissions: "bypass mode" },
   },
+  hotkey: {
+    modifier: {
+      ctrl: "Ctrl",
+      shift: "Shift",
+      alt: "Alt",
+      meta: "Meta",
+      esc: "ESC",
+      enter: "Enter",
+      space: "Space",
+      tab: "Tab",
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+    }
+  }
 } as const;

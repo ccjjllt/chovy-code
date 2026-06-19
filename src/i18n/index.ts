@@ -23,6 +23,19 @@ let effective: Locale = "zh";
 let dict: Dictionary = { ...base, ...flatten(zh) };
 const missingWarned = new Set<string>();
 
+const _listeners = new Set<(l: Locale) => void>();
+
+export function onLocaleChange(fn: (l: Locale) => void): () => void {
+  _listeners.add(fn);
+  return () => _listeners.delete(fn);
+}
+
+import { useSyncExternalStore } from "react";
+
+export function useLocale(): Locale {
+  return useSyncExternalStore(onLocaleChange, getLocale);
+}
+
 export function getLocalePreference(): LocalePreference {
   return preference;
 }
@@ -60,6 +73,12 @@ export async function setLocale(next: LocalePreference | LocaleAlias | undefined
   // Persist if explicitly set by user and not just initialization
   if (next !== undefined) {
     saveConfigPatch({ i18n: { locale: preference } });
+  }
+
+  for (const l of _listeners) {
+    try {
+      l(effective);
+    } catch {}
   }
 
   emitTelemetry({ type: "tui.locale.change", locale: effective, preference });
