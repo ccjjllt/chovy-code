@@ -1,4 +1,4 @@
-export { loadConfig, resetConfigCache } from "./config.js";
+export { loadConfig, resetConfigCache, saveConfigPatch } from "./config.js";
 export type { ChovyConfig, Config, PartialConfig, PermissionMode, LoadConfigOptions } from "./config.js";
 
 export {

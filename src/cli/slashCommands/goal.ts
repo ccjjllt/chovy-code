@@ -26,8 +26,10 @@ import {
 import type { ReplCtx, SlashEntry } from "../slashCommands.js";
 import type { GoalState } from "../../types/index.js";
 
+import { t } from "../../i18n/index.js";
+
 export const goalSlashEntry: SlashEntry = {
-  help: "长程目标循环（/goal <objective> | status | pause | resume | complete | clear）",
+  help: t("slash.goal.desc"),
   handler: async (args, ctx) => {
     let parsed;
     try {

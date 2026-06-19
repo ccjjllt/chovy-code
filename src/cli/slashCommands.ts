@@ -5,6 +5,9 @@ import { goalSlashEntry } from "./slashCommands/goal.js";
 import { checkpointSlashEntry } from "./slashCommands/checkpoint.js";
 import { skillSlashEntry } from "./slashCommands/skill.js";
 import { memSlashEntry } from "./slashCommands/mem.js";
+import { themeSlashEntry } from "./slashCommands/theme.js";
+import { langSlashEntry } from "./slashCommands/lang.js";
+import { t } from "../i18n/index.js";
 
 /**
  * Read-only/mutator surface that slash command handlers receive. Keeping
@@ -204,22 +207,22 @@ function isPermissionMode(s: string): s is PermissionMode {
 
 export const slashCommands: Record<string, SlashEntry> = {
   help: {
-    help: "显示斜杠命令帮助浮层",
+    help: t("slash.help.desc"),
     handler: (_args, ctx) => { ctx.toggleHelp(true); },
   },
 
   quit: {
-    help: "退出 REPL",
+    help: t("slash.quit.desc"),
     handler: (_args, ctx) => { ctx.exit(); },
   },
 
   clear: {
-    help: "清空消息列表",
+    help: t("slash.clear.desc"),
     handler: (_args, ctx) => { ctx.clearMessages(); ctx.toggleHelp(false); },
   },
 
   mode: {
-    help: "切换权限模式（default/plan/acceptEdits/auto/bypassPermissions）",
+    help: t("slash.mode.desc"),
     handler: (args, ctx) => {
       const v = args.trim();
       if (!v) {
@@ -240,9 +243,13 @@ export const slashCommands: Record<string, SlashEntry> = {
   checkpoint: checkpointSlashEntry,
 
   mem: memSlashEntry,
+  
+  theme: themeSlashEntry,
+  
+  lang: langSlashEntry,
 
   agents: {
-    help: "列出活跃子 agent（step-22）",
+    help: t("slash.agents.desc"),
     handler: (_args, ctx) => {
       const xs = ctx.listAgents();
       ctx.appendSystem(xs.length ? xs.join("\n") : "（暂无活跃子 agent）");
@@ -252,7 +259,7 @@ export const slashCommands: Record<string, SlashEntry> = {
   skill: skillSlashEntry,
 
   skills: {
-    help: "已加载技能名单（别名：/skill list）",
+    help: t("slash.skills.desc"),
     handler: (_args, ctx) => {
       const xs = ctx.listSkills();
       ctx.appendSystem(xs.length ? xs.join("\n") : "（暂无技能）");
@@ -260,14 +267,14 @@ export const slashCommands: Record<string, SlashEntry> = {
   },
 
   provider: {
-    help: "列出已注册 provider",
+    help: t("slash.provider.desc"),
     handler: (_args, ctx) => {
       ctx.appendSystem(ctx.listProviders().join(", "));
     },
   },
 
   config: {
-    help: "打开交互式配置向导",
+    help: t("slash.config.desc"),
     handler: async (_args, ctx) => {
       if (!ctx.config) {
         ctx.appendSystem("/config 暂不可用：配置向导未接入当前 REPL。");

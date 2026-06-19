@@ -1,6 +1,8 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { PermissionMode } from "../../config/index.js";
+import { t } from "../../i18n/index.js";
+import { formatCost } from "../../i18n/format.js";
 
 /**
  * Snapshot of the runtime budget shown in the header. Filled in piece by
@@ -44,13 +46,7 @@ const MODE_COLORS: Record<PermissionMode, string> = {
   bypassPermissions: "red",
 };
 
-const MODE_LABEL: Record<PermissionMode, string> = {
-  default: "default",
-  plan: "plan",
-  acceptEdits: "accept-edits",
-  auto: "auto",
-  bypassPermissions: "bypass!",
-};
+
 
 /** SCW pressure → ctx label color (step-27). */
 const PRESSURE_COLOR: Record<NonNullable<BudgetSnapshot["pressureLevel"]>, string | undefined> = {
@@ -68,7 +64,6 @@ export function HeaderBar({ mode, provider, model, budget, swarm }: Props): Reac
   const ratio = budget.ctxTotalTokens > 0
     ? Math.min(100, Math.round((budget.ctxUsedTokens / budget.ctxTotalTokens) * 100))
     : 0;
-  const cost = budget.costUSD.toFixed(4);
   const color = MODE_COLORS[mode];
   const swarmChip = swarm
     ? `  swarm: ${swarm.running}R/${swarm.done}D`
@@ -80,7 +75,10 @@ export function HeaderBar({ mode, provider, model, budget, swarm }: Props): Reac
     ? PRESSURE_COLOR[budget.pressureLevel]
     : undefined;
   const ctxBold = budget.pressureLevel === "hard";
-  const tail = `  $${cost}${swarmChip}`;
+  
+  const ctxLabel = t("header.ctx", { pct: ratio });
+  const costLabel = t("header.cost", { cost: formatCost(budget.costUSD) });
+  const tail = `  ${costLabel}${swarmChip}`;
 
   return (
     <Box
@@ -90,14 +88,14 @@ export function HeaderBar({ mode, provider, model, budget, swarm }: Props): Reac
       paddingX={1}
     >
       <Box>
-        <Text color={color} bold>{`▎${MODE_LABEL[mode]}`}</Text>
+        <Text color={color} bold>{`▎${t(`header.mode.${mode}`)}`}</Text>
         <Text dimColor>{`  ${provider}/${model}`}</Text>
       </Box>
       <Box>
         {pressureColor ? (
-          <Text color={pressureColor} bold={ctxBold}>{`ctx ${ratio}%`}</Text>
+          <Text color={pressureColor} bold={ctxBold}>{ctxLabel}</Text>
         ) : (
-          <Text dimColor>{`ctx ${ratio}%`}</Text>
+          <Text dimColor>{ctxLabel}</Text>
         )}
         <Text dimColor>{tail}</Text>
       </Box>

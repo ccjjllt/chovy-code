@@ -245,7 +245,9 @@ export type TelemetryEvent =
       fingerprintHit: boolean;
       durMs: number;
       ts: number;
-    };
+    }
+  | { type: "tui.theme.change"; name: string; ts: number }
+  | { type: "tui.locale.change"; locale: string; preference: string; ts: number };
 
 /** Type of an event with `ts` filled in by the sink (so callers can omit it). */
 export type TelemetryEventInput = TelemetryEvent extends infer T

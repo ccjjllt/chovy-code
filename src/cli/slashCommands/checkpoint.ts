@@ -13,13 +13,13 @@
  */
 
 import type { SlashEntry } from "../slashCommands.js";
+import { t } from "../../i18n/index.js";
 
 const HELP =
   "/checkpoint now | list (or just /checkpoint to force one now)";
 
 export const checkpointSlashEntry: SlashEntry = {
-  help:
-    "立即生成 / 列出 checkpoint（/checkpoint now | list）",
+  help: t("slash.checkpoint.desc"),
   handler: async (args, ctx) => {
     const sub = args.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
     const runtime = ctx.checkpoint;

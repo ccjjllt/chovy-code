@@ -14,12 +14,11 @@
  * (a leaf module) but never the engine / providers. The REPL closes over
  * cwd / threadId via `ReplSkillRuntime` (see `slashCommands.ts`).
  */
-
 import type { SlashEntry } from "../slashCommands.js";
+import { t } from "../../i18n/index.js";
 
 export const skillSlashEntry: SlashEntry = {
-  help:
-    "技能图：列出 / 查看 / 试规划 / 手动激活 / 清空（/skill list|show|plan|<name>|clear）",
+  help: t("slash.skill.desc"),
   handler: async (args, ctx) => {
     const trimmed = args.trim();
     const parts = trimmed.split(/\s+/);

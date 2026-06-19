@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { safeFsSync } from "../fs/index.js";
+import { writeFileSync } from "node:fs";
 import { ChovyError } from "../types/errors.js";
 import { chovyConfigPath } from "./home.js";
 
@@ -51,6 +52,16 @@ const ContextSchema = z.object({
   reserveTokens: z.number().int().min(0).default(2048),
 });
 
+const ThemeSchema = z.object({
+  name: z.string().default("ChovyDefault"),
+  custom: z.record(z.string()).optional(),
+});
+
+const I18nSchema = z.object({
+  locale: z.string().optional(),
+  costInCNY: z.boolean().default(false),
+});
+
 const ConfigSchema = z.object({
   provider: z.enum(PROVIDER_IDS).default("openai"),
   model: z.string().optional(),
@@ -61,6 +72,8 @@ const ConfigSchema = z.object({
   swarm: SwarmSchema.default({}),
   memory: MemorySchema.default({}),
   context: ContextSchema.default({}),
+  theme: ThemeSchema.default({}),
+  i18n: I18nSchema.default({}),
 });
 
 export type ChovyConfig = z.infer<typeof ConfigSchema>;
@@ -79,6 +92,8 @@ export type PartialConfig = {
   swarm?: Partial<ChovyConfig["swarm"]>;
   memory?: Partial<ChovyConfig["memory"]>;
   context?: Partial<ChovyConfig["context"]>;
+  theme?: Partial<ChovyConfig["theme"]>;
+  i18n?: Partial<ChovyConfig["i18n"]>;
 };
 
 // ---------------------------------------------------------------------------
@@ -181,6 +196,12 @@ function readEnvLayer(env: NodeJS.ProcessEnv): PartialConfig {
   if (reserve !== undefined) context.reserveTokens = reserve;
   if (Object.keys(context).length > 0) out.context = context;
 
+  const i18n: PartialConfig["i18n"] = {};
+  if (env["CHOVY_I18N_LOCALE"]) i18n.locale = env["CHOVY_I18N_LOCALE"];
+  const costInCNY = bool(env["CHOVY_I18N_COST_IN_CNY"]);
+  if (costInCNY !== undefined) i18n.costInCNY = costInCNY;
+  if (Object.keys(i18n).length > 0) out.i18n = i18n;
+
   return out;
 }
 
@@ -195,7 +216,7 @@ function mergeLayer(base: PartialConfig, over: PartialConfig): PartialConfig {
     const v = over[key];
     if (v === undefined) continue;
     if (
-      (key === "swarm" || key === "memory" || key === "context") &&
+      (key === "swarm" || key === "memory" || key === "context" || key === "theme" || key === "i18n") &&
       typeof v === "object" &&
       v !== null
     ) {
@@ -265,6 +286,24 @@ export function loadConfig(opts: LoadConfigOptions = {}): ChovyConfig {
 export function resetConfigCache(): void {
   cached = undefined;
   cachedKey = "";
+}
+
+/**
+ * Persists a partial configuration patch to ~/.chovy/config.json.
+ * Deep merges with the existing file contents and strips any secret fields.
+ */
+export function saveConfigPatch(patch: PartialConfig, filePath?: string): void {
+  const targetPath = filePath ?? chovyConfigPath();
+  const current = readFileLayer(targetPath);
+  const next = mergeLayer(current, patch);
+  
+  // Double safety: strip anything resembling a secret from being written
+  // (apiKey is conceptually not part of ConfigSchema, but we enforce it here).
+  if ("apiKey" in next) delete (next as any).apiKey;
+  if ("secret" in next) delete (next as any).secret;
+
+  writeFileSync(targetPath, JSON.stringify(next, null, 2) + "\n");
+  resetConfigCache();
 }
 
 function extractEnvSubset(env: NodeJS.ProcessEnv): Record<string, string | undefined> {

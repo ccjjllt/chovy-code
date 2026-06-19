@@ -11,6 +11,7 @@ import {
   type PermissionMode,
 } from "../config/index.js";
 import { logger } from "../logger/index.js";
+import { setLocale } from "../i18n/index.js";
 import { ensureHomeDirs, ensureProjectDirs } from "../fs/index.js";
 import { listProviders, getProvider } from "../providers/index.js"; // side-effect: registers providers
 import { listTools } from "../tools/index.js"; // side-effect: registers tools
@@ -63,7 +64,7 @@ interface ConfigCommandFlags {
  * subcommand so behaviour is consistent regardless of how the user
  * invoked the CLI.
  */
-function resolveCtx(opts: CommonFlags): ResolvedCtx {
+async function resolveCtx(opts: CommonFlags): Promise<ResolvedCtx> {
   if (opts.verbose && !process.env["CHOVY_LOG_LEVEL"]) logger.setLevel("debug");
   if (opts.feature?.length) setCliFeatureFlags(opts.feature);
 
@@ -105,6 +106,7 @@ function resolveCtx(opts: CommonFlags): ResolvedCtx {
     logError(err);
     process.exit(2);
   }
+  await setLocale(config.i18n?.locale as any);
 
   return {
     provider: config.provider,
@@ -167,8 +169,8 @@ function commandFromActionArgs(args: readonly unknown[]): Command {
   throw new ChovyError("INTERNAL", "Commander action did not provide command context.");
 }
 
-function resolveCtxFromActionArgs(args: readonly unknown[]): ResolvedCtx {
-  return resolveCtx(commandFromActionArgs(args).optsWithGlobals() as CommonFlags);
+async function resolveCtxFromActionArgs(args: readonly unknown[]): Promise<ResolvedCtx> {
+  return await resolveCtx(commandFromActionArgs(args).optsWithGlobals() as CommonFlags);
 }
 
 const program = new Command();
@@ -195,8 +197,8 @@ program
   // Default behaviour: no prompt → REPL, prompt → one-shot. Equivalent to
   // `chovy chat [prompt]` but without forcing the subcommand keystrokes.
   .argument("[prompt]", "one-shot prompt; omit to enter the interactive REPL")
-  .action((prompt: string | undefined, opts: CommonFlags) => {
-    const ctx = resolveCtx(opts);
+  .action(async (prompt: string | undefined, opts: CommonFlags) => {
+    const ctx = await resolveCtx(opts);
     if (!prompt) { startRepl(ctx); return; }
     startOneShot(prompt, ctx);
   });
@@ -205,8 +207,8 @@ program
 program
   .command("chat [prompt]")
   .description("一次性对话；省略 prompt 进入交互式 REPL")
-  .action((prompt: string | undefined, ...args: unknown[]) => {
-    const ctx = resolveCtxFromActionArgs(args);
+  .action(async (prompt: string | undefined, ...args: unknown[]) => {
+    const ctx = await resolveCtxFromActionArgs(args);
     if (!prompt) { startRepl(ctx); return; }
     startOneShot(prompt, ctx);
   });
@@ -230,7 +232,7 @@ program
     },
     ...rest: unknown[]
   ) => {
-    const ctx = resolveCtxFromActionArgs(rest);
+    const ctx = await resolveCtxFromActionArgs(rest);
     assertProviderReady(ctx.provider);
     const { runHeadlessGoal } = await import("./goalHeadless.js");
     const code = await runHeadlessGoal({
@@ -347,7 +349,7 @@ mem
   .command("show <id>")
   .description("展示某个记忆条目")
   .action(async (id: string, ...args: unknown[]) => {
-    resolveCtxFromActionArgs(args);
+    await resolveCtxFromActionArgs(args);
     const { createMemoryStore } = await import("../memory/index.js");
     const store = await createMemoryStore({ cwd: process.cwd() });
     const rows = await store.list({ projectId: store.projectId, limit: 10_000 });
@@ -380,7 +382,7 @@ mem
     options: { bm25?: boolean; limit?: number; layer?: string },
     ...args: unknown[]
   ) => {
-    resolveCtxFromActionArgs(args);
+    await resolveCtxFromActionArgs(args);
     const { createMemoryStore, syncProject } = await import("../memory/index.js");
     const store = await createMemoryStore({ cwd: process.cwd() });
     await syncProject(process.cwd(), store);
@@ -410,7 +412,7 @@ mem
   .command("rebuild")
   .description("清表重建索引（恢复损坏的 memory.db）")
   .action(async (...args: unknown[]) => {
-    resolveCtxFromActionArgs(args);
+    await resolveCtxFromActionArgs(args);
     const { createMemoryStore, forceRebuild } = await import("../memory/index.js");
     const store = await createMemoryStore({ cwd: process.cwd() });
     const r = await forceRebuild(process.cwd(), store);
@@ -424,7 +426,7 @@ mem
   .command("stats")
   .description("展示当前 store 概况（条目数 + 路径 + degraded 标志）")
   .action(async (...args: unknown[]) => {
-    resolveCtxFromActionArgs(args);
+    await resolveCtxFromActionArgs(args);
     const { createMemoryStore } = await import("../memory/index.js");
     const store = await createMemoryStore({ cwd: process.cwd() });
     const c = await store.count({ projectId: store.projectId });
@@ -442,8 +444,8 @@ const agent = program.command("agent").description("子 agent 操作（step-19/2
 agent.command("list")
   .description("列出活跃子 agent；--builtins 列内置角色")
   .option("--builtins", "列出 step-19 注册的内置角色定义")
-  .action((options: { builtins?: boolean }, ...rest: unknown[]) => {
-    resolveCtxFromActionArgs(rest);
+  .action(async (options: { builtins?: boolean }, ...rest: unknown[]) => {
+    await resolveCtxFromActionArgs(rest);
     if (options.builtins) {
       const defs = listBuiltinAgents();
       if (defs.length === 0) {
@@ -481,7 +483,7 @@ agent.command("list")
 const skill = program.command("skill").description("技能操作（CSG — step-29）");
 skill.command("list").description("列出已注册技能")
   .action(async (...args: unknown[]) => {
-    resolveCtxFromActionArgs(args);
+    await resolveCtxFromActionArgs(args);
     const { ensureBundledSkillsInitialized, listSkills: listAll } =
       await import("../skills/index.js");
     await ensureBundledSkillsInitialized();
@@ -500,7 +502,7 @@ skill.command("list").description("列出已注册技能")
   });
 skill.command("show <name>").description("打印技能 systemFragment 全文")
   .action(async (name: string, ...args: unknown[]) => {
-    resolveCtxFromActionArgs(args);
+    await resolveCtxFromActionArgs(args);
     const { ensureBundledSkillsInitialized, getSkill } =
       await import("../skills/index.js");
     await ensureBundledSkillsInitialized();
@@ -516,16 +518,16 @@ skill.command("show <name>").description("打印技能 systemFragment 全文")
 // `chovy log tail` — point at the local telemetry sink (step-03).
 const log = program.command("log").description("本地 telemetry 操作");
 log.command("tail").description("提示 telemetry 文件位置")
-  .action((...args: unknown[]) => {
-    resolveCtxFromActionArgs(args);
+  .action(async (...args: unknown[]) => {
+    await resolveCtxFromActionArgs(args);
     logger.info("log tail — 见 ~/.chovy/telemetry/<date>.jsonl");
   });
 
 // `chovy provider list` — discoverability.
 const providerCmd = program.command("provider").description("provider 列表");
 providerCmd.command("list").description("列出已注册 provider")
-  .action((...args: unknown[]) => {
-    resolveCtxFromActionArgs(args);
+  .action(async (...args: unknown[]) => {
+    await resolveCtxFromActionArgs(args);
     for (const p of listProviders()) {
       logger.info(`${p.info.id}\t${p.info.label}\tdefault=${p.info.defaultModel}`);
     }
@@ -543,7 +545,7 @@ program
   .action(async (options: ConfigCommandFlags, ...args: unknown[]) => {
     const command = commandFromActionArgs(args);
     const all = command.optsWithGlobals() as CommonFlags & ConfigCommandFlags;
-    resolveCtx(all);
+    await resolveCtx(all);
     await runConfigWizard({
       provider: all.provider ?? options.provider,
       model: all.model ?? options.model,

@@ -18,8 +18,8 @@
  * Output formatting mirrors the `chovy mem ...` CLI (`src/cli/index.tsx`)
  * so REPL and headless read identically.
  */
-
 import type { SlashEntry } from "../slashCommands.js";
+import { t } from "../../i18n/index.js";
 
 const HELP =
   "/mem list | show <id> | search <query> | stats (see --help-style flags below)\n" +
@@ -64,7 +64,7 @@ function intOf(v: string | boolean | undefined, fallback: number): number {
 }
 
 export const memSlashEntry: SlashEntry = {
-  help: "记忆查询（/mem list|show|search|stats）",
+  help: t("slash.mem.desc"),
   handler: async (args, ctx) => {
     const trimmed = args.trim();
     const sp = trimmed.indexOf(" ");

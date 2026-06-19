@@ -64,8 +64,13 @@ function config(): ChovyConfig {
     permissionMode: "default",
     swarm: { parallelism: 8, maxSubAgents: 100, budgetUSD: 5 },
     memory: { enabled: true, injectBudgetTokens: 4096 },
-    context: { softRatio: 0.75, hardRatio: 0.9, reserveTokens: 2048 },
-  };
+    context: {
+      softRatio: 0.75,
+      hardRatio: 0.9,
+      reserveTokens: 2048,
+    },
+    theme: { name: "ChovyDefault", custom: {} }
+  } as any;
 }
 
 function tryRemove(path: string): void {
