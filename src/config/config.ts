@@ -64,6 +64,13 @@ const I18nSchema = z.object({
 
 const KeybindingsSchema = z.record(z.string().nullable()).optional();
 
+const CompanionSchema = z.object({
+  muted: z.boolean().default(false),
+  visible: z.boolean().default(true),
+  skin: z.string().default("default"),
+  size: z.enum(["auto", "compact", "small"]).default("auto"),
+  petCount: z.number().int().nonnegative().default(0),
+});
 
 const ConfigSchema = z.object({
   provider: z.enum(PROVIDER_IDS).default("openai"),
@@ -78,6 +85,7 @@ const ConfigSchema = z.object({
   theme: ThemeSchema.default({}),
   i18n: I18nSchema.default({}),
   keybindings: KeybindingsSchema.default({}),
+  companion: CompanionSchema.default({}),
 });
 
 export type ChovyConfig = z.infer<typeof ConfigSchema>;
@@ -99,6 +107,7 @@ export type PartialConfig = {
   theme?: Partial<ChovyConfig["theme"]>;
   i18n?: Partial<ChovyConfig["i18n"]>;
   keybindings?: Partial<ChovyConfig["keybindings"]>;
+  companion?: Partial<ChovyConfig["companion"]>;
 };
 
 // ---------------------------------------------------------------------------
@@ -226,7 +235,7 @@ function mergeLayer(base: PartialConfig, over: PartialConfig): PartialConfig {
     const v = over[key];
     if (v === undefined) continue;
     if (
-      (key === "swarm" || key === "memory" || key === "context" || key === "theme" || key === "i18n" || key === "keybindings") &&
+      (key === "swarm" || key === "memory" || key === "context" || key === "theme" || key === "i18n" || key === "keybindings" || key === "companion") &&
       typeof v === "object" &&
       v !== null
     ) {

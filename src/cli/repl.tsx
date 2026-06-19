@@ -60,6 +60,7 @@ import { computeBudget } from "../context/budgets.js";
 import { loadConfig } from "../config/config.js";
 import type { GoalState, ToolSession } from "../types/index.js";
 import { getCompanionStateMachine } from "../companion/index.js";
+import { useKeybinding } from "../keybindings/index.js";
 
 interface Props {
   provider: ProviderId;
@@ -175,6 +176,10 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     if (focus === "swarm" && !showSwarmPanel) setFocus("input");
     if (focus === "goal" && !showGoalPanel) setFocus("input");
   }, [focus, showSwarmPanel, showGoalPanel]);
+
+  useKeybinding("buddy.pet", () => {
+    companionRef.current?.pet();
+  }, { isActive: !busy });
 
   const appendSystem = useCallback((content: string) => {
     setMessages((xs) => [...xs, { id: newId(), role: "system", content }]);

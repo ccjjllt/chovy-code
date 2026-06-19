@@ -10,6 +10,7 @@ export * from "./stateBus.js";
 export * from "./stateMachine.js";
 export * from "./skin.js";
 export * from "./CompanionHost.js";
+export * from "./prefs.js";
 
 export interface CompanionHandle {
   setState(s: import("./types.js").CompanionState): void;
@@ -19,35 +20,32 @@ export interface CompanionHandle {
   dispose(): void;
 }
 
-let companionMuted = false;
-let userSkin = "default";
-const muteListeners = new Set<(v: boolean) => void>();
-const skinListeners = new Set<(v: string) => void>();
+import { getPrefs, prefsEvents, setMuted, setSkin } from "./prefs.js";
+
+export function useCompanionPrefs() {
+  const [prefs, setPrefs] = useState(() => getPrefs());
+  useEffect(() => {
+    const handler = () => setPrefs(getPrefs());
+    prefsEvents.on("change", handler);
+    return () => { prefsEvents.off("change", handler); };
+  }, []);
+  return prefs;
+}
 
 export function setUserCompanionMuted(b: boolean) {
-  companionMuted = b;
-  muteListeners.forEach(cb => cb(b));
+  setMuted(b);
 }
 export function useCompanionMuted() {
-  const [m, setM] = useState(companionMuted);
-  useEffect(() => {
-    muteListeners.add(setM);
-    return () => { muteListeners.delete(setM); };
-  }, []);
-  return [m, setUserCompanionMuted] as const;
+  const prefs = useCompanionPrefs();
+  return [prefs.muted, setUserCompanionMuted] as const;
 }
 
 export function setUserSkin(n: string) {
-  userSkin = n;
-  skinListeners.forEach(cb => cb(n));
+  setSkin(n);
 }
 export function useUserSkin() {
-  const [s, setS] = useState(userSkin);
-  useEffect(() => {
-    skinListeners.add(setS);
-    return () => { skinListeners.delete(setS); };
-  }, []);
-  return [s, setUserSkin] as const;
+  const prefs = useCompanionPrefs();
+  return [prefs.skin, setUserSkin] as const;
 }
 
 export function mountCompanion(opts: { cwd: string; muted?: boolean }): CompanionHandle {
@@ -63,9 +61,15 @@ export function mountCompanion(opts: { cwd: string; muted?: boolean }): Companio
 }
 
 export function companionReservedColumns(cols: number, speaking: boolean, skinCols: number = 20): number {
-  if (companionMuted || process.env["CHOVY_NO_COMPANION"] === "1") return 0;
+  const prefs = getPrefs();
+  if (prefs.muted || !prefs.visible || process.env["CHOVY_NO_COMPANION"] === "1") return 0;
   if (cols < 60) return 0;
-  const gifCols = cols < 100 ? 16 : skinCols;
+  
+  let gifCols = 20;
+  if (prefs.size === "compact") gifCols = 16;
+  else if (prefs.size === "small") gifCols = 12;
+  else gifCols = cols < 100 ? 16 : skinCols;
+
   const bubble = speaking ? 35 : 0; // 34 width + 1 marginRight
   return gifCols + bubble + 2; // paddingX=1
 }

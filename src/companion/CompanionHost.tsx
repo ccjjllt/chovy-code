@@ -9,8 +9,10 @@ import { pickQuip } from "./quips.js";
 import { useTheme } from "../theme/index.js";
 import { FALLBACKS } from "./ascii-fallback.js";
 import { resolveGifPath } from "./skin.js";
-import { useUserSkin, useCompanionMuted } from "./index.js";
+import { useCompanionPrefs } from "./index.js";
 import { t } from "../i18n/index.js";
+import { companionBus } from "./stateBus.js";
+import { PetHearts } from "./pet.js";
 
 function NarrowFace({ state, reaction }: { state: CompanionState; reaction?: string }) {
   const theme = useTheme();
@@ -27,11 +29,19 @@ export function CompanionHost({ cwd, reservedCols }: { cwd: string; reservedCols
   const caps = useTerminalCaps();
   const sm = getCompanionStateMachine();
   const [state, setState] = useState<CompanionState>(sm.current());
-  const [skin] = useUserSkin();
-  const [muted] = useCompanionMuted();
+  const prefs = useCompanionPrefs();
   const [reaction, setReaction] = useState<string | undefined>(undefined);
+  const [petActive, setPetActive] = useState(false);
 
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return companionBus.on((msg) => {
+      if (msg.type === "pet") {
+        setPetActive(true);
+      }
+    });
+  }, []);
 
   useEffect(() => sm.onChange((s) => {
     setState(s);
@@ -61,16 +71,23 @@ export function CompanionHost({ cwd, reservedCols }: { cwd: string; reservedCols
     };
   }, [reaction]);
 
-  if (muted || process.env["CHOVY_NO_COMPANION"] === "1") return null;
+  if (prefs.muted || !prefs.visible || process.env["CHOVY_NO_COMPANION"] === "1") return null;
   if (caps.cols < 60) return <NarrowFace state={state} reaction={reaction} />;
   
-  const cols = caps.cols < 100 ? 16 : Math.min(reservedCols ?? 20, 22);
-  const gifPath = resolveGifPath(state, skin, cwd);
+  let cols = 20;
+  if (prefs.size === "compact") cols = 16;
+  else if (prefs.size === "small") cols = 12;
+  else cols = caps.cols < 100 ? 16 : Math.min(reservedCols ?? 20, 22);
+
+  const gifPath = resolveGifPath(state, prefs.skin, cwd);
 
   return (
     <Box flexDirection="row" alignItems="flex-end" paddingX={1} flexShrink={0}>
       {reaction ? <SpeechBubble text={reaction} state={state}/> : null}
-      <CompanionPlayer gifPath={gifPath} active cols={cols} />
+      <Box flexDirection="column" alignItems="center">
+        <PetHearts active={petActive} onDone={() => setPetActive(false)} />
+        <CompanionPlayer gifPath={gifPath} active cols={cols} />
+      </Box>
     </Box>
   );
 }

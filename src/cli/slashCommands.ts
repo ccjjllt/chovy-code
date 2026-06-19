@@ -7,6 +7,7 @@ import { skillSlashEntry } from "./slashCommands/skill.js";
 import { memSlashEntry } from "./slashCommands/mem.js";
 import { themeSlashEntry } from "./slashCommands/theme.js";
 import { langSlashEntry } from "./slashCommands/lang.js";
+import { buddySlashEntry } from "./slashCommands/buddy.js";
 import { t } from "../i18n/index.js";
 
 /**
@@ -247,6 +248,8 @@ export const slashCommands: Record<string, SlashEntry> = {
   theme: themeSlashEntry,
   
   lang: langSlashEntry,
+  
+  buddy: buddySlashEntry,
 
   agents: {
     help: t("slash.agents.desc"),
