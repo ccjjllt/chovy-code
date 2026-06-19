@@ -12,8 +12,19 @@
 > - 架构 / 屏障 / 接口冻结点：`docs/tui/architecture.md`
 > - 5 项 TUI 创新：`docs/tui/innovations.md`
 > - 命令 / skills 覆盖矩阵：`docs/tui/command-skill-coverage.md`
+> - **计划评审（对标 claude-code 的优化项 + 测试现状）：`docs/tui/review-claude-code-alignment.md`** ← 动手前必读
 > - 每一步详细：`docs/tui/step-31-…md` ~ `docs/tui/step-60-…md`
 > - 完工 / 验收报告：`docs/complete/step-XX-acceptance.md`（与既有 step-01~30 同目录）
+
+> ⚠ **2026-06-20 评审摘要**（详见 `review-claude-code-alignment.md`）：
+> 1. **测试基线已红**：`bun run demo` 当前在 `main` 上失败（`demo.ts:45` 断言 `8 passed` 已过时，smoke 实为 `12 passed`，已实跑确认）；
+>    整套 smoke 只测 CLI 子命令，`architecture.md §7` 禁止渲染 Ink，**整个交互层今天零自动化覆盖**；
+>    且 step-45/46/54 验收要求"渲染 snapshot"与 §7 自相矛盾。
+> 2. **对标 claude-code 的最大缺口**：后端已具备 `ask_user_question` / `todo_write` / 6 层权限引擎 / 文件 `+/-` diff 追踪，
+>    但 step-31..60 **没有为它们做任何 TUI 界面**（`ask_user_question` 在源码里明确等待一个被推迟的 `AskUserOverlay`），
+>    却把 5 步投给 GIF 吉祥物。建议重排优先级：先补 AskUserOverlay / 权限审批 / Todo 面板 / Diff 预览，再做装饰。
+> 3. InputBox 应补 claude-code 式 `@` 文件引用、`!` bash、生成中状态行+`esc 中断`、busy 消息排队；
+>    `/` slash 菜单应与 Ctrl+P 同等优先级。
 
 ---
 
@@ -231,11 +242,12 @@ Worker 5 (settings/skills/wrap-up):    48 → 49 → CSG-R skill catalogue → 5
 ## 7. 阅读顺序（给即将动手的 agent）
 
 1. 读完本 README §1-§6；
-2. 读 `docs/tui/architecture.md`，理解核心新模块（`theme/` `i18n/` `keybindings/` `tui/` `companion/` `palette/` `screens/`）
+2. 读 `docs/tui/review-claude-code-alignment.md`（对标 claude-code 的优化项 + 测试现状，**优先级最高**）；
+3. 读 `docs/tui/architecture.md`，理解核心新模块（`theme/` `i18n/` `keybindings/` `tui/` `companion/` `palette/` `screens/`）
    与既有 `cli/` 的依赖边和 barrier 时点；
-3. 读 `docs/tui/innovations.md`，知道哪些是 chovy-code 自己的设计、哪些必须避免照搬；
-4. 若任务涉及命令、slash、skills、InputBox 补全，读 `docs/tui/command-skill-coverage.md`；
-5. 找到自己的 step 文档，**严格按产物清单 + 接口签名**实现；
-6. 收尾跑该 step 的「验收标准」冒烟，落 `docs/complete/step-XX-acceptance.md`。
+4. 读 `docs/tui/innovations.md`，知道哪些是 chovy-code 自己的设计、哪些必须避免照搬；
+5. 若任务涉及命令、slash、skills、InputBox 补全，读 `docs/tui/command-skill-coverage.md`；
+6. 找到自己的 step 文档，**严格按产物清单 + 接口签名**实现；
+7. 收尾跑该 step 的「验收标准」冒烟，落 `docs/complete/step-XX-acceptance.md`。
 
 > **不读 docs/tui 直接动手会大概率跑偏**——本阶段同样是「先有计划，再有代码」。

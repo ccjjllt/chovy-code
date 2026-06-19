@@ -2,6 +2,18 @@
 
 **Phase**: P | **依赖**: O 全部 | **可并行**: 58 | **估时**: 2h
 
+> ⚠ **评审注记（2026-06-20，已实跑验证 · 详见 `review-claude-code-alignment.md §1`）**：
+> 1. **本步假设的绿色基线现在是红的**：`bun run demo` 当前在 `main` 上失败——`scripts/demo.ts:45`
+>    断言 `/8 passed, 0 failed/`，但 `smoke.ts` 现有 11 case + 1 bin = **12 项**，实跑输出 `12 passed, 0 failed`，
+>    demo 第 3 步正则不匹配 → 退出码 1。本步「在既有 5 条 demo 主线上追加 5 条」之前，**必须先修这条**：
+>    把 demo 对 smoke 的断言改成**数量无关**（`/\d+ passed, 0 failed/` + 退出码 0），否则每加一个 smoke case 都会再次打红。
+> 2. **覆盖率载体不要新增 CLI 子命令**：下文 `palette list` / `palette coverage --json` 今天不存在，且会新增 CLI surface，
+>    与红线 #14「`bin/chovy.js` 字节级一致」冲突。改用 smoke 内部只读 API（直接 import `getCommandCoverage()` 计数）。
+> 3. **`smoke-tui.ts` 的 import-即-跑模式脆弱**：靠 import 副作用执行 → 无法重复跑、27 个 spawn 串行触发文档自己警告的 150s 超时、
+>    `exit()` vs `throw` 判定不一致。改为每个 `smoke-stepXX.ts` 导出 `run(): Promise<Result>`，聚合器并发（≤5）调度收集。
+> 4. **smoke 仍不覆盖渲染**：见 architecture §7 评审注记；本步的 TUI E2E 必须明确是"纯逻辑单测 + 子进程抽查"，
+>    不要声称验证了交互渲染。
+
 ## 目标
 
 把 Phase J–O 全部 smoke 接入主入口 `bun run smoke`；新增 `bun run bench:tui`；

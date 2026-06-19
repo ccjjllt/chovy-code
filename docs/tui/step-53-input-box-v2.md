@@ -12,6 +12,15 @@
 4. **斜杠补全 hint**：输入 `/` 后右侧弹出最匹配命令名（按 Tab 补全），候选来自 step-44 的 command store 单源，包含内置 slash、skills、plugins、workflows、MCP；
 5. **paste 检测**：粘贴大于 N 字符时识别为粘贴 → 折叠显示 `[粘贴 N 字符]` 占位。
 
+> ⚠ **评审注记（对标 claude-code · 详见 `review-claude-code-alignment.md §2.3`）**：
+> 现有 step-53 只覆盖 `/` slash + paste，缺 claude-code 输入区的几个核心模式。建议把以下追加进本步产物/验收：
+> - **`@` 文件引用 + 模糊文件选择器**（claude-code 最核心的上下文附加方式）：行内 `@path` 触发 fs fuzzy picker
+>   （复用 step-42 模糊搜索 + fs 列举），选中后作为上下文引用插入。**这是当前计划最明显的输入缺口，优先补。**
+> - **`!` bash 模式**：行首 `!cmd` 直接跑 shell（可选）。
+> - **`#` 快速记忆**：作为 `/remember` skill / `mem write` 的输入态快捷入口（chovy 现有 `/mem`）。
+> - **生成中消息排队（message queueing）**：busy 时 Enter = 入队，agent 结束后顺序消费；当前只保留 draft，未定义 busy 提交行为。
+> - **生成中状态行 + `esc 中断`**：与 step-46/56 协同，流式期间常驻 `spinner + 已用时 + token/cost + esc 中断`。
+
 ## 产物
 
 ```

@@ -12,6 +12,14 @@
 cc-haha 的 `CompanionSprite` 是 **手画 ASCII sprite**（`src/buddy/sprites.ts`）+ 帧索引切换；
 chovy-code 反其道：**直接用真 GIF 文件**，运行时解码每一帧 → ANSI 半块字符串 → Ink `<Text>` 输出。
 
+> ⚠ **评审注记（投入再平衡 · 详见 `review-claude-code-alignment.md §2.2`）**：
+> 吉祥物是 chovy 的差异化亮点，但 step-36..40 共 **5 步 ~17h** 的投入相对 claude-code 体验目标偏重——
+> claude-code 是极简、信息密集的专业工具，没有吉祥物。建议：
+> - 将吉祥物**压缩为 2–3 步**（解码+渲染合并、播放器+状态机合并、集成），把省下的预算转给
+>   AskUserOverlay / 权限审批 / Todo 面板 / Diff 预览（后端已就绪、却无 UI——见 §2.1）；
+> - 默认更克制：**欢迎屏可有 GIF，主屏常驻 companion 改为 opt-in**（默认仅 busy/done/error 短暂提示）；
+> - 吉祥物**不应排在协作交互面之前**。
+
 技术细节（详见 `step-36`）：
 
 - 解码：Bun 内置 `Bun.file().arrayBuffer()` 读 GIF → 自实现 GIF block parser + LZW 解码 → ARGB 帧序列。

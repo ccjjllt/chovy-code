@@ -67,6 +67,12 @@ Phase L 必须把下列命令组接入同一个 command registry。Ctrl+P 与 `/
 - feature-gated 且当前构建不可用的命令。
 - 需要外部 connector 但没有 connector 时仍 visible 的假入口。
 
+> ⚠ **评审注记（计数真实性 · 详见 `review-claude-code-alignment.md §2.7`）**：
+> Session / transcript 组（`/resume` `/rewind` `/branch` `/timeline` `/diff` …）计数的**前置是真实存在的 transcript 持久化后端**。
+> 当前 `src/` 中**未见独立的聊天会话/transcript 持久化层**（session/resume/rewind 命中的多是 checkpoint/goal，而非会话存储）。
+> 为避免用"预填/占位"凑满 `commandEquivalents>=72`：后端缺失时这些命令必须 `hidden`/`enabled=false` 且**不计数**，
+> 并在 step-44/59 的 `nonCounted` 里以 `reason="backend-missing"` 列出。否则 72 这个数会**虚高**。
+
 ### 3.1 每组最低行为
 
 下面是行为验收线。实现时可以比它更强，但不能低于它；否则即使命令名存在也不计入 `commandEquivalents`。

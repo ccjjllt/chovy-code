@@ -12,6 +12,15 @@
 4. **assistant 消息分段**：长文本（> 3000 chars）默认折叠为 `[...展开 N 字符]`；
 5. **主题色 + i18n** 接入。
 
+> ⚠ **评审注记（对标 claude-code · 详见 `review-claude-code-alignment.md §2.1`）**：
+> 折叠工具块是对的，但 claude-code 体验的支柱是 **可读的 diff 预览 + 逐次审批**，后端数据已就绪却没排 UI：
+> - **DiffView**：编辑类工具（`file_edit`/`file_write`）结果应展开为带色 `+/-` diff——
+>   `src/tools/fs/fileHistory.ts` 已追踪每文件 size/±lines，本步只需消费展示，不重算。
+> - **PermissionPrompt**：接 `src/harness/permissions/engine.ts` 的 L6 ASK 分支，inline 显示
+>   「将执行 X / 应用此 diff，允许？是 / 否 / 本会话总是」，与 `acceptEdits`/`plan`/`auto` 模式联动；
+>   理想是"先看 diff 再批准"串联。
+> 这两项可作为本步扩展或新增独立 step；优先级应**高于** step-36..40 的吉祥物。
+
 ## 产物
 
 ```
