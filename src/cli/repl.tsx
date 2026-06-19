@@ -61,6 +61,8 @@ import { loadConfig } from "../config/config.js";
 import type { GoalState, ToolSession } from "../types/index.js";
 import { getCompanionStateMachine } from "../companion/index.js";
 import { useKeybinding } from "../keybindings/index.js";
+import { CommandPalette } from "../palette/index.js";
+import { usePaletteState, openPalette } from "../palette/state.js";
 
 interface Props {
   provider: ProviderId;
@@ -103,6 +105,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
       companionRef.current?.dispose();
     };
   }, [sm]);
+
+  const { open: paletteOpen } = usePaletteState();
 
   const [messages, setMessages] = useState<UIMessage[]>(() => [{
     id: newId(),
@@ -180,6 +184,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   useKeybinding("buddy.pet", () => {
     companionRef.current?.pet();
   }, { isActive: !busy });
+
+  useKeybinding("palette.open", () => openPalette(), { isActive: !busy });
 
   const appendSystem = useCallback((content: string) => {
     setMessages((xs) => [...xs, { id: newId(), role: "system", content }]);
@@ -729,75 +735,78 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
 
   return (
     <Box flexDirection="column">
-      <HeaderBar
-        mode={mode}
-        provider={provider}
-        model={model}
-        budget={budget}
-        swarm={swarmSummary}
-      />
+      {paletteOpen ? <CommandPalette ctx={ctx} /> : null}
 
-      {showGoalPanel && goalState ? (
-        <Box marginTop={1}>
-          <GoalPanel
-            goal={goalState}
-            focused={focus === "goal"}
-            onPause={() => {
-              goalAcRef.current?.abort();
-              const cur = goalState;
-              if (cur) {
-                finalizeGoal(cur.threadId, "paused");
-                setGoalState({ ...cur, status: "paused" });
-              }
-              appendSystem("Goal paused（/goal resume 可继续）。");
-            }}
-            onCancel={() => {
-              goalAcRef.current?.abort();
-              setGoalState(null);
-              appendSystem("Goal cancelled.");
-            }}
-          />
-        </Box>
-      ) : null}
+      <Box flexDirection="column" display={paletteOpen ? "none" : "flex"}>
+        <HeaderBar
+          mode={mode}
+          provider={provider}
+          model={model}
+          budget={budget}
+          swarm={swarmSummary}
+        />
 
-      <MessageList messages={messages} />
+        {showGoalPanel && goalState ? (
+          <Box marginTop={1}>
+            <GoalPanel
+              goal={goalState}
+              focused={focus === "goal"}
+              onPause={() => {
+                goalAcRef.current?.abort();
+                const cur = goalState;
+                if (cur) {
+                  finalizeGoal(cur.threadId, "paused");
+                  setGoalState({ ...cur, status: "paused" });
+                }
+                appendSystem("Goal paused（/goal resume 可继续）。");
+              }}
+              onCancel={() => {
+                goalAcRef.current?.abort();
+                setGoalState(null);
+                appendSystem("Goal cancelled.");
+              }}
+            />
+          </Box>
+        ) : null}
 
-      {helpOpen ? (
-        <Box marginTop={1}>
-          <HelpOverlay entries={listSlashEntries()} />
-        </Box>
-      ) : null}
+        <MessageList messages={messages} />
 
-      {busy ? (
-        <Box marginTop={1}>
-          <StatusLine status={tool ? "tool" : "thinking"} tool={tool} />
-        </Box>
-      ) : null}
+        {helpOpen ? (
+          <Box marginTop={1}>
+            <HelpOverlay entries={listSlashEntries()} />
+          </Box>
+        ) : null}
 
-      {showSwarmPanel ? (
-        <Box marginTop={1}>
-          <SwarmPanel
-            agents={swarm.agents}
-            budget={{ spent: swarm.budget.costUSD }}
-            focused={focus === "swarm"}
-            onClose={() => setFocus("input")}
-            onGoalToggle={() => {
-              // Legacy hook from the swarm panel (predates step-23). Toggle
-              // focus to the goal panel if one is active, else no-op.
-              if (showGoalPanel) setFocus("goal");
-            }}
-          />
-        </Box>
-      ) : null}
+        {busy ? (
+          <Box marginTop={1}>
+            <StatusLine status={tool ? "tool" : "thinking"} tool={tool} />
+          </Box>
+        ) : null}
 
-      <Box marginTop={1} flexDirection="row" alignItems="flex-end">
-        <Box flexGrow={1} flexDirection="column" width={caps.cols - companionReservedColumns(caps.cols, speaking)}>
-          <InputBox
-            disabled={busy}
-            history={history}
-            onSubmit={send}
-            onCancel={onCancel}
-            onCtrlC={onCtrlC}
+        {showSwarmPanel ? (
+          <Box marginTop={1}>
+            <SwarmPanel
+              agents={swarm.agents}
+              budget={{ spent: swarm.budget.costUSD }}
+              focused={focus === "swarm"}
+              onClose={() => setFocus("input")}
+              onGoalToggle={() => {
+                // Legacy hook from the swarm panel (predates step-23). Toggle
+                // focus to the goal panel if one is active, else no-op.
+                if (showGoalPanel) setFocus("goal");
+              }}
+            />
+          </Box>
+        ) : null}
+
+        <Box marginTop={1} flexDirection="row" alignItems="flex-end">
+          <Box flexGrow={1} flexDirection="column" width={caps.cols - companionReservedColumns(caps.cols, speaking)}>
+            <InputBox
+              disabled={busy}
+              history={history}
+              onSubmit={send}
+              onCancel={onCancel}
+              onCtrlC={onCtrlC}
           />
         </Box>
         <CompanionHost cwd={process.cwd()} reservedCols={companionReservedColumns(caps.cols, speaking)} />
@@ -805,6 +814,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
       {focus !== "input" ? (
         <Text dimColor>{`  (panel focused: ${focus} — Tab to cycle)`}</Text>
       ) : null}
+      </Box>
     </Box>
   );
 }
