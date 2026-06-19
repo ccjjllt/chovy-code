@@ -59,6 +59,7 @@ const ThemeSchema = z.object({
 
 const I18nSchema = z.object({
   locale: z.string().optional(),
+  responseLanguage: z.string().default("auto"),
   costInCNY: z.boolean().default(false),
 });
 
@@ -70,6 +71,36 @@ const CompanionSchema = z.object({
   skin: z.string().default("default"),
   size: z.enum(["auto", "compact", "small"]).default("auto"),
   petCount: z.number().int().nonnegative().default(0),
+});
+
+const GeneralSchema = z.object({
+  releaseNotes: z.boolean().default(true),
+  showTips: z.boolean().default(true),
+  showReasoningSummaries: z.boolean().default(true),
+  shellToolPartsExpanded: z.boolean().default(false),
+  editToolPartsExpanded: z.boolean().default(false),
+  neverAskQuestions: z.boolean().default(false),
+});
+
+const TuiSchema = z.object({
+  terminalTitle: z.boolean().default(true),
+  diffWrapMode: z.enum(["word", "none"]).default("word"),
+  toastLevel: z.enum(["quiet", "normal", "verbose"]).default("normal"),
+  density: z.enum(["compact", "comfortable"]).default("comfortable"),
+  animations: z.boolean().default(true),
+});
+
+const ProvidersSchema = z.record(z.object({
+  baseUrl: z.string().optional(),
+}));
+
+const ModelOptionsSchema = z.object({
+  variant: z.string().default("default"),
+  reasoningEffort: z.enum(["default", "low", "medium", "high"]).default("default"),
+});
+
+const PermissionsSchema = z.object({
+  mode: z.enum(PERMISSION_MODES).default("default"),
 });
 
 const ConfigSchema = z.object({
@@ -86,6 +117,11 @@ const ConfigSchema = z.object({
   i18n: I18nSchema.default({}),
   keybindings: KeybindingsSchema.default({}),
   companion: CompanionSchema.default({}),
+  general: GeneralSchema.default({}),
+  tui: TuiSchema.default({}),
+  providers: ProvidersSchema.default({}),
+  modelOptions: ModelOptionsSchema.default({}),
+  permissions: PermissionsSchema.default({}),
 });
 
 export type ChovyConfig = z.infer<typeof ConfigSchema>;
@@ -108,6 +144,11 @@ export type PartialConfig = {
   i18n?: Partial<ChovyConfig["i18n"]>;
   keybindings?: Partial<ChovyConfig["keybindings"]>;
   companion?: Partial<ChovyConfig["companion"]>;
+  general?: Partial<ChovyConfig["general"]>;
+  tui?: Partial<ChovyConfig["tui"]>;
+  providers?: Partial<ChovyConfig["providers"]>;
+  modelOptions?: Partial<ChovyConfig["modelOptions"]>;
+  permissions?: Partial<ChovyConfig["permissions"]>;
 };
 
 // ---------------------------------------------------------------------------
@@ -235,7 +276,7 @@ function mergeLayer(base: PartialConfig, over: PartialConfig): PartialConfig {
     const v = over[key];
     if (v === undefined) continue;
     if (
-      (key === "swarm" || key === "memory" || key === "context" || key === "theme" || key === "i18n" || key === "keybindings" || key === "companion") &&
+      (key === "swarm" || key === "memory" || key === "context" || key === "theme" || key === "i18n" || key === "keybindings" || key === "companion" || key === "general" || key === "tui" || key === "providers" || key === "modelOptions" || key === "permissions") &&
       typeof v === "object" &&
       v !== null
     ) {

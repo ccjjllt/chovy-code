@@ -1,4 +1,4 @@
-import { openSettings, closeSettings, setCategory, useSettingsState } from "../src/screens/state.js";
+import { openSettings } from "../src/screens/state.js";
 import { CATEGORY_LIST } from "../src/screens/settingsTabs/index.js";
 import { settingsSlashEntry } from "../src/cli/slashCommands/settings.js";
 

@@ -10,10 +10,13 @@ export * from "./useKeybinding.js";
 export * from "./persist.js";
 export * from "./conflict.js";
 
-export function getBinding(id: string): string {
+export function getBinding(id: string): string | null {
   const config = loadConfig();
   const override = config.keybindings?.[id];
-  if (override !== undefined && override !== null) {
+  if (override === null) {
+    return null;
+  }
+  if (override !== undefined) {
     return override;
   }
 

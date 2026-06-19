@@ -12,7 +12,7 @@ export function HotkeyHint({ id, k }: HotkeyHintProps) {
   const theme = useTheme();
   useLocale(); // Subscribe to locale changes
   
-  let keyStr = k;
+  let keyStr: string | null | undefined = k;
   if (id && !keyStr) {
     try {
       keyStr = getBinding(id);

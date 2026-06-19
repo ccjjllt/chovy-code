@@ -14,15 +14,16 @@ export function useKeybinding(
   handler: () => void,
   opts?: { isActive?: boolean }
 ): void {
-  const matcher = useMemo(() => parseKey(getBinding(id)), [id]);
+  const bindingString = getBinding(id);
+  const matcher = useMemo(() => bindingString ? parseKey(bindingString) : null, [bindingString]);
 
-  // Disable if not TTY
+  // Disable if not TTY or no binding
   const isTTY = Boolean(process.stdin.isTTY);
-  const isActive = opts?.isActive !== false && isTTY;
+  const isActive = opts?.isActive !== false && isTTY && bindingString !== null;
 
   useInput(
     (input, key) => {
-      if (!isActive) return;
+      if (!isActive || !matcher) return;
 
       const r = matchInkKey(matcher, input, key, globalChordState);
 

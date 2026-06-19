@@ -48,6 +48,33 @@ export function parseKey(s: string): KeyMatcher {
   };
 }
 
+export function describeKey(input: string, key: Key): string | null {
+  let primary = "";
+  if (key.upArrow) primary = "Up";
+  else if (key.downArrow) primary = "Down";
+  else if (key.leftArrow) primary = "Left";
+  else if (key.rightArrow) primary = "Right";
+  else if (key.return) primary = "Enter";
+  else if (key.escape) primary = "Esc";
+  else if (key.tab) primary = "Tab";
+  else if (key.backspace || key.delete) primary = "Backspace";
+  else if (input) primary = input.toUpperCase();
+
+  if (!primary) return null;
+
+  const parts: string[] = [];
+  if (key.ctrl) parts.push("Ctrl");
+  if (key.meta) parts.push("Meta");
+  if (key.shift) parts.push("Shift");
+
+  if (parts.length === 0 && input && input.length === 1 && /^[a-zA-Z0-9.,/;'\\[\]\-=`]$/.test(input)) {
+    return null;
+  }
+
+  parts.push(primary);
+  return parts.join("+");
+}
+
 export function matchInkKey(
   matcher: KeyMatcher,
   input: string,

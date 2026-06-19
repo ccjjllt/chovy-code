@@ -98,7 +98,18 @@ export async function commitDirty() {
     return;
   }
 
-  // TODO: step-49+ iterate through SettingsField registry and write()
-  // For step-48, just clear dirty and close since there are no fields yet
+  // Iterate through SettingsField registry and write()
+  // Note: doing this in parallel or sequential is fine. Let's do sequential.
+  // We need to import listSettingsFields from settingsTabs/index.ts
+  const { listSettingsFields } = await import("./settingsTabs/index.js");
+  const fields = listSettingsFields();
+  
+  for (const key of keys) {
+    const field = fields.find(f => f.id === key);
+    if (field) {
+      await field.write(s.dirty[key]!);
+    }
+  }
+
   _store.setState((prev) => ({ ...prev, dirty: {}, open: false, highlightFieldId: undefined }));
 }

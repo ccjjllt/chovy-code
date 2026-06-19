@@ -24,11 +24,15 @@ export interface SettingsField {
   restartRequired?: boolean;
 }
 
+const registry: SettingsField[] = [];
+
 export function listSettingsFields(): SettingsField[] {
-  // Step-49+ registration logic goes here
-  return [];
+  return registry;
 }
 
-export function registerSettingsField(_f: SettingsField): void {
-  // Step-49+ registration logic goes here
+export function registerSettingsField(f: SettingsField): void {
+  if (!registry.find(x => x.id === f.id)) {
+    registry.push(f);
+  }
 }
+

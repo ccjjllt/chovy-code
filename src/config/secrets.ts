@@ -90,6 +90,26 @@ export function hasSecret(provider: ProviderId): boolean {
   return getSecret(provider) !== undefined;
 }
 
+/** Determine where the secret is loaded from. */
+export function providerSource(provider: ProviderId): "env" | "secrets" | "missing" {
+  const fromEnv = process.env[ENV_KEYS[provider]];
+  if (fromEnv && fromEnv.length > 0) return "env";
+  
+  const fromFile = readSecretFromFile(provider);
+  if (fromFile && fromFile.length > 0) return "secrets";
+  
+  return "missing";
+}
+
+/** Writes the secret to ~/.chovy/secrets/<provider> and updates cache */
+export async function writeSecret(provider: ProviderId, secret: string): Promise<void> {
+  const { safeFs } = await import("../fs/index.js");
+  const path = join(chovySecretsDir(), provider);
+  await safeFs.write(path, secret + "\n");
+  cache.set(provider, secret);
+}
+
+
 /**
  * Optional base-URL override (self-hosted gateway / Azure / regional proxy).
  * Returns `undefined` when the provider should use its built-in default.

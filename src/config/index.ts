@@ -8,6 +8,8 @@ export {
   envKeyFor,
   resetSecretsCache,
   ENV_KEYS,
+  writeSecret,
+  providerSource,
 } from "./secrets.js";
 
 export {
