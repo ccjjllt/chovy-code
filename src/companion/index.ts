@@ -2,6 +2,9 @@ export * from "./types.js";
 export * from "./cache.js";
 export * from "./player.js";
 export * from "./ascii-fallback.js";
+export * from "./stateBus.js";
+export * from "./stateMachine.js";
+export * from "./skin.js";
 
 export interface CompanionHandle {
   setState(s: import("./types.js").CompanionState): void;

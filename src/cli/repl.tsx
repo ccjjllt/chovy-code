@@ -57,6 +57,7 @@ import {
 import { computeBudget } from "../context/budgets.js";
 import { loadConfig } from "../config/config.js";
 import type { GoalState, ToolSession } from "../types/index.js";
+import { getCompanionStateMachine } from "../companion/index.js";
 
 interface Props {
   provider: ProviderId;
@@ -83,6 +84,9 @@ const newId = (): string => {
  */
 export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactElement {
   const { exit } = useApp();
+  const sm = getCompanionStateMachine();
+
+  useEffect(() => () => sm.dispose(), [sm]);
 
   const [messages, setMessages] = useState<UIMessage[]>(() => [{
     id: newId(),
@@ -109,6 +113,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   const cancelledRef = useRef(false);
   const ctrlCArmedRef = useRef(false);
   const ctrlCTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastToolTimeRef = useRef(0);
 
   // step-29: stable per-REPL ToolSession. Plumbed into `runAgent({ session })`
   // every turn so manual skill activations (`/skill <name>` and SkillTool)
@@ -584,6 +589,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     setBusy(true);
     setTool(undefined);
     cancelledRef.current = false;
+    lastToolTimeRef.current = Date.now();
+    sm.setState("work", "send-start");
 
     try {
       let buf = "";
@@ -603,10 +610,15 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
           setMessages((xs) =>
             xs.map((m) => (m.id === assistantId ? { ...m, content: buf } : m)),
           );
+          if (sm.current() === "work" && Date.now() - lastToolTimeRef.current > 5000) {
+            sm.setState("think", "stream-only");
+          }
         },
         onToolCall: (name) => {
           if (cancelledRef.current) return;
           setTool(name);
+          lastToolTimeRef.current = Date.now();
+          sm.setState("work", `tool=${name}`);
         },
         onContextSnapshot: (snap) => {
           // Push live ctx % + pressure color into the HeaderBar.
@@ -639,12 +651,14 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
           m.id === assistantId ? { ...m, pending: false, content: finalText } : m,
         ));
       }
+      sm.setState("done", "send-finally");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(msg);
       setMessages((xs) => xs.map((m) =>
         m.id === assistantId ? { ...m, pending: false, content: `Error: ${msg}` } : m,
       ));
+      sm.setState("error", msg);
     } finally {
       setBusy(false);
       setTool(undefined);
