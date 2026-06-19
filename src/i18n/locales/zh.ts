@@ -56,11 +56,18 @@ export const zh = {
     tips: {
       title: "上手提示",
       init: "运行 /init 初始化 chovy.md",
-      palette: "• Ctrl+P 打开命令面板",
-      settings: "• Ctrl+, 进入设置",
-      lang: "• Ctrl+L 切换中英",
-      buddy: "• /buddy 与吉祥物互动",
-      goal: "• /goal 进入长程任务循环"
+      palette: "Ctrl+P 打开命令面板",
+      settings: "Ctrl+, 进入设置",
+      lang: "Ctrl+L 切换中英",
+      buddy: "/buddy 与吉祥物互动",
+      goal: "/goal 进入长程任务循环",
+      releasenotes: "/release-notes 查看版本说明"
+    },
+    upgraded: "已从 {{ from }} 升级到 {{ to }}"
+  },
+  companion: {
+    slash: {
+      help: "吉祥物命令"
     }
   }
 } as const;

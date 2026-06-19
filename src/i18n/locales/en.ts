@@ -56,11 +56,18 @@ export const en = {
     tips: {
       title: "Tips",
       init: "Run /init to initialize chovy.md",
-      palette: "• Ctrl+P to open Command Palette",
-      settings: "• Ctrl+, to open Settings",
-      lang: "• Ctrl+L to switch language",
-      buddy: "• /buddy to interact with companion",
-      goal: "• /goal to start long-running task"
+      palette: "Ctrl+P to open Command Palette",
+      settings: "Ctrl+, to open Settings",
+      lang: "Ctrl+L to switch language",
+      buddy: "/buddy to interact with companion",
+      goal: "/goal to start long-running task",
+      releasenotes: "/release-notes to view release notes"
+    },
+    upgraded: "Upgraded from {{ from }} to {{ to }}"
+  },
+  companion: {
+    slash: {
+      help: "Companion commands"
     }
   }
 } as const;
