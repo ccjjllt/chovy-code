@@ -63,6 +63,8 @@ import { getCompanionStateMachine } from "../companion/index.js";
 import { useKeybinding } from "../keybindings/index.js";
 import { CommandPalette } from "../palette/index.js";
 import { usePaletteState, openPalette } from "../palette/state.js";
+import { SettingsScreen } from "../screens/settings.js";
+import { useSettingsState, openSettings } from "../screens/state.js";
 import { registerAllCommandSources } from "./commandSources.js";
 import { version } from "../version.js";
 import { WelcomeScreen } from "../screens/welcome.js";
@@ -120,6 +122,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   }, [sm]);
 
   const { open: paletteOpen } = usePaletteState();
+  const { open: settingsOpen } = useSettingsState();
 
   const [messages, setMessages] = useState<UIMessage[]>(() => [{
     id: newId(),
@@ -220,6 +223,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   }, { isActive: !busy });
 
   useKeybinding("palette.open", () => openPalette(), { isActive: !busy });
+  useKeybinding("settings.open", () => openSettings(), { isActive: !busy });
 
   const appendSystem = useCallback((content: string) => {
     setMessages((xs) => [...xs, { id: newId(), role: "system", content }]);
@@ -606,6 +610,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     skill: skillRuntime,
     config: configRuntime,
     mem: memRuntime,
+    openSettings,
   }), [appendSystem, exit, goalRuntime, checkpointRuntime, skillRuntime, configRuntime, memRuntime]);
 
 
@@ -782,8 +787,9 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   return (
     <Box flexDirection="column">
       {paletteOpen ? <CommandPalette ctx={ctx} /> : null}
+      {settingsOpen ? <SettingsScreen ctx={ctx} /> : null}
 
-      <Box flexDirection="column" display={paletteOpen ? "none" : "flex"}>
+      <Box flexDirection="column" display={paletteOpen || settingsOpen ? "none" : "flex"}>
         <HeaderBar
           mode={mode}
           provider={provider}

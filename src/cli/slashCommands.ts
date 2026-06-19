@@ -9,6 +9,7 @@ import { memSlashEntry } from "./slashCommands/mem.js";
 import { themeSlashEntry } from "./slashCommands/theme.js";
 import { langSlashEntry } from "./slashCommands/lang.js";
 import { buddySlashEntry } from "./slashCommands/buddy.js";
+import { settingsSlashEntry } from "./slashCommands/settings.js";
 import { t } from "../i18n/index.js";
 
 /**
@@ -265,6 +266,8 @@ export const slashCommands: Record<string, SlashEntry> = {
   
   buddy: buddySlashEntry,
 
+  settings: settingsSlashEntry,
+
   agents: {
     help: t("slash.agents.desc"),
     handler: (_args, ctx) => {
@@ -343,7 +346,6 @@ export const slashCommands: Record<string, SlashEntry> = {
   "extra-usage": { help: "Show extra usage", handler: (_a, ctx) => ctx.appendSystem("Extra usage unavailable"), category: "model" },
 
   configure: { help: "Run configuration wizard", handler: async (_a, ctx) => { if (ctx.config) await ctx.config.run(); }, category: "settings" },
-  settings: { help: "Open settings", handler: (_a, ctx) => { if(ctx.openSettings) ctx.openSettings(); else ctx.appendSystem("Settings UI missing"); }, category: "settings" },
   themes: { help: "Open theme settings", handler: (_a, ctx) => { if(ctx.openSettings) ctx.openSettings("theme"); }, category: "settings" },
   color: { help: "Change agent color", handler: (_a, ctx) => ctx.appendSystem("Opening color picker..."), category: "settings" },
   language: { help: "Change language", handler: (_a, ctx) => { if(ctx.openSettings) ctx.openSettings("lang"); }, category: "settings" },
