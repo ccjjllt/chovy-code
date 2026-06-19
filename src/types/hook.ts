@@ -17,13 +17,18 @@
 import type { ChatMessage } from "./messages.js";
 
 /**
- * The 12 hook event types (step-13).
+ * The 12+1 hook event types (step-13 + step-28 extension).
  *
  * 8 mirror cc-haha's event surface; 3 (`GoalIteration` / `SubAgentSpawn` /
  * `CheckpointWritten`) are chovy-code additions wired to chovy's own
- * long-running-task / sub-agent / memory checkpoints.
+ * long-running-task / sub-agent / memory checkpoints. `ContextRebuilt`
+ * (step-28) fires after the SCW rebuilder swaps the message tail —
+ * advisory only, mirrors the §17 rule that hooks observe but never
+ * mutate the rebuilt list.
  *
  * Frozen here as the single source — `harness/hooks/` re-exports it.
+ * Adding members is the explicit extension model (AGENTS.md §16
+ * "frozen-extension"); renaming is forbidden.
  */
 export type HookEvent =
   | "PreToolUse"
@@ -37,7 +42,8 @@ export type HookEvent =
   | "SessionEnd"
   | "GoalIteration"
   | "SubAgentSpawn"
-  | "CheckpointWritten";
+  | "CheckpointWritten"
+  | "ContextRebuilt";
 
 /**
  * Outcome of running *all* hooks for a single event (spec §返回值规约).

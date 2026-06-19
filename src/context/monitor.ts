@@ -108,6 +108,14 @@ export interface ContextMonitor {
   inspect(messages: ChatMessage[], systemBytes: number): MonitorState;
   /** Subscribe to level changes; idempotent unsubscribe. */
   onLevelChange(cb: (state: MonitorState) => void): Unsubscribe;
+  /**
+   * step-28: clear `_level` back to `"fresh"` so the next `inspect()`
+   * compares against a clean baseline. Used by the SCW rebuilder after
+   * messages are swapped out — without it the monitor stays sticky-hard
+   * forever and the pressure block never clears. Listeners are NOT
+   * fired (rebuild already emitted its own `context.rebuild` event).
+   */
+  reset(): void;
   /** Test hook — clear listeners + level. Production callers don't need it. */
   _resetForTesting(): void;
 }
@@ -202,6 +210,12 @@ class ContextMonitorImpl implements ContextMonitor {
     return () => {
       this.listeners.delete(cb);
     };
+  }
+
+  reset(): void {
+    // step-28 SCW rebuild — clear level only. Listeners survive so the
+    // REPL HeaderBar / future SCW UI keeps observing future transitions.
+    this._level = "fresh";
   }
 
   _resetForTesting(): void {

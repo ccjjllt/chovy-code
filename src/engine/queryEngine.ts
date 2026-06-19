@@ -67,20 +67,14 @@ import type {
   ToolResult,
   ToolSession,
 } from "../types/index.js";
-import type {
-  ContextMonitor,
-  MonitorState,
-} from "../context/index.js";
+import type { ContextMonitor, MonitorState } from "../context/index.js";
 import { getCheckpointCoordinator } from "../memory/checkpointWriter.js";
 import { CostTracker, type TokenUsage } from "./costTracker.js";
 import { normalizeForProvider, pruneOrphanToolMessages } from "./messageNormalize.js";
 import { runStream } from "./streamHandler.js";
 import { executeToolCall } from "./toolExecutor.js";
-import {
-  createContextMonitorIfEnabled,
-  notifyContextSnapshot,
-  pendingFromMonitorState,
-} from "./contextHook.js";
+import { createContextMonitorIfEnabled } from "./contextHook.js";
+import { runScwRound } from "./rebuildHook.js";
 import {
   buildSpawnHandles,
   fillBuildOptions,
@@ -372,10 +366,10 @@ export class QueryEngine {
           stopReason = "cancelled";
           break;
         }
-        if (cost.total().usd >= budgetUSD) {
+        if (cost.cumulativeTotal().usd >= budgetUSD) {
           stopReason = "budgetExceeded";
           log.warn("QueryEngine: budget exceeded", {
-            usd: cost.total().usd,
+            usd: cost.cumulativeTotal().usd,
             cap: budgetUSD,
           });
           break;
@@ -418,24 +412,28 @@ export class QueryEngine {
           shape,
         });
 
-        // ── 3. SCW monitor (step-27) ──────────────────────────────────────
-        // Inspect AFTER the system prompt is built (we measure system bytes
-        // alongside the message list) but BEFORE the provider call so the
-        // UI / pressure block reflect THIS round's actual input. The
-        // monitor's transition logic emits telemetry + fires checkpoint
-        // triggers internally; the engine only forwards the snapshot to
-        // the optional UI callback and stages `pendingPressure` /
-        // `pendingBudget` for the NEXT round's prompt build.
-        if (ctxMonitor) {
-          const snap: MonitorState = ctxMonitor.inspect(
-            messages,
-            effective.text.length,
-          );
-          notifyContextSnapshot(opts.onContextSnapshot, snap);
-          const next = pendingFromMonitorState(snap);
-          pendingPressure = next.pressure;
-          pendingBudget = next.budget;
-        }
+        // ── 3. SCW — step-27 monitor + step-28 rebuild ───────────────────
+        // `runScwRound` inspects ctx pressure, fires the rebuilder on a
+        // hard transition (mutating `messages` in place + resetting the
+        // monitor + splitting the cost session), and returns the next
+        // round's prompt hints. Engine logic stays linear; SCW glue
+        // lives in `rebuildHook.ts` per AGENTS.md §17 600-line cap.
+        const scw = await runScwRound({
+          monitor: ctxMonitor,
+          messages,
+          systemBytes: effective.text.length,
+          cost,
+          cwd,
+          sessionId,
+          provider: opts.provider,
+          model,
+          cfg: config,
+          hooks: ctx.hooks,
+          parentSignal: ac.signal,
+          onSnapshot: opts.onContextSnapshot,
+        });
+        pendingPressure = scw.pressure;
+        pendingBudget = scw.budget;
 
         // ── 4. normalize messages for provider ────────────────────────────
         const cleaned = pruneOrphanToolMessages(messages);
@@ -563,7 +561,7 @@ export class QueryEngine {
           });
         }
       }
-      const totals = cost.total();
+      const totals = cost.cumulativeTotal();
       emitTelemetry({
         type: "agent.end",
         agentId,
@@ -578,7 +576,7 @@ export class QueryEngine {
       }
     }
 
-    const totals = cost.total();
+    const totals = cost.cumulativeTotal();
     return {
       finalContent,
       messages,

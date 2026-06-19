@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）、Phase G step-24（Memory Store：bun:sqlite + FTS5 + 4 类记忆）+ step-26（Checkpoint Writer：协调器 + 路径沙箱 + 7 段模板 + fallback）+ Phase H step-27（Context Monitor：自适应阈值 + ContextMonitor + `<context-pressure>` 注入 + soft 自动 checkpoint + HeaderBar 实时 ctx % 颜色 + `CHOVY_CTX_DISABLE` 开关）全部完成构建并通过复验；下一步进入 step-25（Memory Injection）+ step-28（Context Rebuild）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`；Phase G step-24 验收报告见 `docs/complete/step-24-acceptance.md`；step-26 验收报告见 `docs/complete/step-26-acceptance.md`；**Phase A-G 综合复验报告见 `docs/complete/phase-a-g-acceptance.md`**（重点复验 Phase G，修复 step-24↔step-26 bridge smoke / `nul` 残留 / step-26 文档准确性 3 项）；**Phase H step-27 验收报告见 `docs/complete/step-27-acceptance.md`**（48 用例 PASS + smoke-step23/24/26 回归全过 = 184 PASS / 0 FAIL）。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）、Phase G step-24（Memory Store：bun:sqlite + FTS5 + 4 类记忆）+ step-26（Checkpoint Writer：协调器 + 路径沙箱 + 7 段模板 + fallback）+ Phase H step-27（Context Monitor：自适应阈值 + ContextMonitor + `<context-pressure>` 注入 + soft 自动 checkpoint + HeaderBar 实时 ctx % 颜色 + `CHOVY_CTX_DISABLE` 开关）+ Phase H step-28（Context Rebuild：ContextBudget 8 桶 + 4 selector + sessions/jsonl 归档 + `<context-rebuilt>` marker + ContextRebuilt hook + context.rebuild telemetry + cost.cumulativeTotal 防 budget 绕过 + monitor.reset）全部完成构建并通过复验；下一步进入 step-25（Memory Injection）+ step-29（CSG）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`；Phase G step-24 验收报告见 `docs/complete/step-24-acceptance.md`；step-26 验收报告见 `docs/complete/step-26-acceptance.md`；**Phase A-G 综合复验报告见 `docs/complete/phase-a-g-acceptance.md`**（重点复验 Phase G，修复 step-24↔step-26 bridge smoke / `nul` 残留 / step-26 文档准确性 3 项）；Phase H step-27 验收报告见 `docs/complete/step-27-acceptance.md`（48 用例 PASS + smoke-step23/24/26 回归全过）；**Phase H step-28 验收报告见 `docs/complete/step-28-acceptance.md`**（76 用例 PASS + smoke-step18/20/22/23/24/26/27 回归全过 = 423 PASS / 0 FAIL）。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -696,5 +696,63 @@ chovy log tail                   # 看 telemetry
 
 **`MIN_SOFT_RATIO = 0.5` 防御性下限**：
 - thresholds.ts 拒绝 `softRatio < 0.5` / `softRatio >= hardRatio` / `hardRatio > 0.99`，回退 cfg 默认 + warn。防 user 把 ratio 设成 `0.05` 之类导致每轮都 fire soft。如未来出现合法低 ratio 用例，可放宽下限到 0.1 或加 `CHOVY_CTX_ALLOW_LOW_RATIO=1` 后门，**不要**直接删除该下限。
+
+## 23. Phase H 不变量（Context Rebuild — SCW 第二步）
+
+> Phase H step-28 产物/验收见 `docs/complete/step-28-acceptance.md`。本节固化 step-28 跨步骤生效的不变量；后续 step-25（Memory Injection 与本步 selector 共用）/ step-29（CSG 占用 skills 桶）/ step-30（端到端集成）扩展对应模块时必须遵守。
+
+**单源规约**（接 §16/§17/§18/§19/§20/§21/§22 同模式）：
+- `ContextBudget` → `src/types/context.ts`（step-28 B6 屏障冻结）；8 桶（`systemBase / memory / checkpoint / notes / taskProgress / skills / tools / history`）+ `tail` 别名（已 deprecate，仅给 step-27 占位消费方使用）。后续 step-29/30 用 `import type` 复用，**禁止**重声明字段。
+- `RebuildContextInput / RebuildContextResult` → `src/context/rebuilder.ts`（step-28 冻结）。`src/engine/rebuildHook.ts` 通过 `import type` 透传，不重声明。
+- **`context.rebuild` telemetry 单源** = `src/context/rebuilder.ts:rebuildContext`；CLI / engine / monitor / coordinator 全部为消费方，**不**直发；与 §17 `tool.call`、§17 `agent.cost`、§18 `swarm.dispatch`、§20 `memory.index`、§21 `checkpoint.written`、§22 `context.threshold` 同模式。`context.threshold` 与 `context.rebuild` 是**两个**事件类型 —— monitor 仍是 `context.threshold` 唯一发射点（§22 不变量），rebuilder 是 `context.rebuild` 唯一发射点（§23 新增）。
+- **`ContextRebuilt` hook 单源** = `src/context/rebuilder.ts:rebuildContext`；advisory only（与 §21 `CheckpointWritten` 同模式）。
+- **`ContextBudget` 构造单源** = `src/context/budgets.ts:computeBudget`；rebuilder 接受 `budgetOverride` 仅供测试 / SCW 调参，**不**在生产路径自手卷一个 budget object。
+- **PCM 仍是 ctx window 唯一来源**：`computeBudget` 内部走 `thresholds()`（间接 `CAPS[provider].contextWindow`）。`budgets.ts` **不**直接 `import { CAPS }` —— 与 §22 同纪律（thresholds.ts 是 PCM 二级访问点）。
+- **session JSONL 路径单源** = `src/fs/paths.ts:sessionFile(cwd, sessionId)`；rebuilder 是唯一对该路径执行 `safeFs.append` 的模块（写入 `# rebuild ...` header + ndjson 每消息一行）。step-30 `SessionSearchTool` 是消费方，**不**得截断 / 改写。
+
+**冻结接口**（字段名不改，扩展只追加可选字段）：
+- `ContextBudget`（step-28 B6 冻结）：8 桶字段 + `tail?` deprecated 别名；扩展**追加**字段不替换。`Object.freeze` 强制不可变 —— 调用方读不写。
+- `HookEvent` union（step-13 + step-28 扩展）：`ContextRebuilt` 加入；后续步骤可继续追加成员（与 §16 frozen-extension 一致），**不**重命名既有。
+- `ContextMonitor.reset()`（step-28 新增）：清 `_level → fresh`，**保留** listeners（区别于 `_resetForTesting()` 同时清两者）。仅 SCW rebuild 路径调用；UI / CLI **不**调用。
+- `CostTracker.cumulativeTotal()` / `splitSession()`（step-28 新增）：`cumulative` 字段 record() 累加、`splitSession()` **不**清；budget 闸（`cost.cumulativeTotal().usd >= budgetUSD`）继续用 cumulative —— rebuild **不可**绕过 budget。`reset()` 同时清 `totals` + `cumulative`（`run()` 复用 instance 的 corner case）。
+- `ScwRoundOutcome` / `MaybeRebuildOutcome`（step-28 冻结，B6 预留）：扩展**追加**字段不替换既有。
+
+**取消传播不变量（rebuild）**：
+- rebuilder 的 `parentSignal` 仅 *观察*；selectors 今天都是同步 fs read / sqlite 查询，无独立 AC。后续若加网络 selector（如 `searchExternal`），按 §9 红线**必须**本地 AC 包装 parentSignal —— 不直接转发。
+- `runScwRound` → `maybeRebuild` 链路无新增 AC，复用 caller signal（与 step-21 judge 取消独立 AC 同纪律差异：rebuild 无 spawn，无需独立 AC）。
+
+**budget 防绕过不变量（step-28 关键）**：
+- `cost.splitSession()` **只**清 session 计数 + byModel；`cumulative` 永不清。
+- queryEngine.ts budget 闸（`run()` 主循环顶部）**必须**用 `cumulativeTotal().usd` —— 不能回退到 `total().usd`，否则 rebuild 后 budget 重置为 0，用户可借多次 rebuild 无限刷预算。本不变量等同于：**SCW rebuild ≠ budget 重置**。
+- `agent.end` telemetry 的 `costUSD` 字段 + `QueryRunResult.costUSD` 字段统一用 cumulative —— 用户看到的"本次 run 总花费"包含 rebuild 前后所有 round。
+
+**`recentMessagesPick` 不变量**：
+- `tool_use ↔ tool_result` 配对保护（spec §风险）：`pruneOrphans` 后 `pruneIncompleteTrailingAssistant`；
+  - 孤立 tool message（前面无 assistant.toolCalls）→ 丢；
+  - 尾部 assistant.toolCalls + 无后续 tool result → 丢整条。
+- 严格 budget 裁剪：超 budget **不**保留（spec line 68 "按 重要性 × recency 裁剪" —— 没有 "always keep one" 兜底）。result 可能为空数组；rebuilder 的 `<context-rebuilt>` marker 仍然作为唯一系统消息保留。
+- 启发式偏保守（漏报方向是"多删"，符合"防 provider 拒绝"目标）。后续 step-30 端到端发现误删时，给 ChatMessage 加 `toolCallId?: string` 才精确 —— 本步**不**加（保持 step-16 frozen surface）。
+
+**退化路径不变量（spec §退化路径 line 105-108）**：
+- `latest.md` 不存在 + memory 空 + progress 空 → marker 走 `<rule-summary>` flavor，含最后用户输入 + 可选 objective。spec 提到的"立即同步调一次 checkpoint-writer" **本步不实现**（避免 rebuild 阻塞主循环；spec §性能 + §9 red lines）—— 用户应在 step-26 落地后通过 `/checkpoint now` 主动触发。step-30 端到端可考虑接入。
+- 极端：所有 selector + recent-K 都为空 → result.messages = `[<context-rebuilt with rule-summary>]` 单条。engine 主循环继续 —— provider 看到的是干净的 system 标记，可以重新理解任务。
+
+**queryEngine.ts ≤ 600 行（硬限）守恒**：
+- 当前 598 行（恰至硬限 - 2）。step-28 通过：① 把 SCW 块（11 行）替换为 `runScwRound` 单调用（21 行 → 净 +10）；② 抽 SCW glue 到 `engine/rebuildHook.ts:runScwRound`（同 §17 / §22 contextHook.ts 模式）；③ 合并多行 import → 单行。
+- 后续 step-29/30 接入时**不要**把逻辑塞回 queryEngine.ts；继续抽 helper（CSG candidate → `engine/skillHook.ts`）或扩展 `rebuildHook.ts` / `contextHook.ts`。
+
+**依赖图无环**：
+- `src/context/rebuilder.ts` → `src/memory/store.ts`（leaf-reach createMemoryStore）+ `src/fs/safeFs` + `src/fs/paths` + `src/types/*` + `src/context/{budgets,tokenizer,selectors/*}`；**不**反向 import `engine` / `providers` / `agent` / `swarm` / `goals`（context 是叶子，与 §22 step-27 同模式）。
+- `src/engine/rebuildHook.ts` → `src/context/rebuilder` + `src/context/index`（types）+ `src/engine/contextHook`（PendingContextHints / pendingFromMonitorState 复用）+ `src/engine/costTracker`；queryEngine.ts 通过 `runScwRound` 单点调用，避免直接 import `rebuildContext`（保持单一入口）。
+- `src/context/selectors/memoryPick.ts` → `src/memory/store.ts`（leaf-reach `createMemoryStore`）；**不**经 `memory/index` barrel —— barrel 重导出 `CheckpointCoordinator` 等，会无谓拉入更多模块。
+- `src/context/selectors/progressPick.ts` → `src/memory/files/progressFile.ts`（leaf-reach `readProgressFile`）；同上避免 barrel。
+
+**cumulative-budget 与 §19 `RunGoalOptions.budgetUSD` 协同**：
+- /goal 循环里每轮 `engine.run({budgetUSD: goal.budgetUSD - goal.totalCostUSD})`：每轮 budget 从 *剩余* 预算算起。SCW rebuild 在 round 内触发不影响 round 边界 —— `cost.cumulativeTotal()` 是 *本轮 engine.run* 的累计，不是 goal 全程。goal 循环外部加总 `goal.totalCostUSD += result.costUSD` 不变（cumulative 已包含所有 rebuild 前后的 round）。
+- 后续 step-30 发现"goal budget 突然多扣"是因为 cumulative 算上了 rebuild 前的废弃消息成本时，**不要**减回去 —— rebuild 前的 round 是真的发生过的（耗费了真实 token），budget 应该承担。
+
+**`budgetOverride` 测试入口**：
+- `RebuildContextInput.budgetOverride?: ContextBudget` 仅用于 SCW smoke / 调参；生产路径**永远**走 `computeBudget()`（无内部预算硬编码）。后续 step-29 引入 dynamic skills budget 调整时，应在 `computeBudget` 内部加分支（基于 cfg.skills.maxTokens 等），**不**绕过去自手卷 budget。
+
 
 

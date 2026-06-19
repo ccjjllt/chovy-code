@@ -147,6 +147,20 @@ export class CostTracker {
     cacheRead: 0,
     cacheWrite: 0,
   };
+  /**
+   * Cumulative spend across the entire engine run. Unlike `totals`, this
+   * field is **never reset** by `splitSession()` (step-28 SCW rebuild
+   * uses that to clear per-session telemetry while preserving the
+   * absolute USD that the budget gate enforces). Production callers
+   * read it via `cumulativeTotal()`.
+   */
+  private cumulative: CostTotals = {
+    usd: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+  };
 
   constructor(opts: CostTrackerOptions = {}) {
     this.prices = { ...DEFAULT_PRICES, ...(opts.prices ?? {}) };
@@ -191,6 +205,15 @@ export class CostTracker {
     this.totals.cacheRead += cacheRead;
     this.totals.cacheWrite += cacheWrite;
 
+    // Cumulative bucket — survives `splitSession()` so the budget gate
+    // (`cost.cumulativeTotal().usd >= budgetUSD`) still enforces the
+    // absolute cap after a SCW rebuild (step-28).
+    this.cumulative.usd += usd;
+    this.cumulative.tokensIn += tokensIn;
+    this.cumulative.tokensOut += tokensOut;
+    this.cumulative.cacheRead += cacheRead;
+    this.cumulative.cacheWrite += cacheWrite;
+
     if (this.telemetryEnabled) {
       emitTelemetry({
         type: "agent.cost",
@@ -212,6 +235,15 @@ export class CostTracker {
     return { ...this.totals };
   }
 
+  /**
+   * Cumulative spend across the engine run, surviving `splitSession()`.
+   * The QueryEngine budget gate uses this so an SCW rebuild can't reset
+   * the budget back to zero (step-28 §重建后的副作用 line 95).
+   */
+  cumulativeTotal(): CostTotals {
+    return { ...this.cumulative };
+  }
+
   perModel(): Record<string, PerModelStats> {
     const out: Record<string, PerModelStats> = {};
     for (const [k, v] of this.byModel) out[k] = { ...v };
@@ -219,6 +251,30 @@ export class CostTracker {
   }
 
   reset(): void {
+    this.byModel.clear();
+    this.totals = {
+      usd: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    };
+    this.cumulative = {
+      usd: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    };
+  }
+
+  /**
+   * Reset the per-session counters but PRESERVE `cumulative` (step-28
+   * §重建后的副作用). Called by the engine right after a SCW rebuild
+   * so the next round's telemetry shows fresh numbers while the budget
+   * gate still enforces the absolute USD cap.
+   */
+  splitSession(): void {
     this.byModel.clear();
     this.totals = {
       usd: 0,

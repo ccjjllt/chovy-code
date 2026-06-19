@@ -46,13 +46,17 @@ export function createContextMonitorIfEnabled(
 
 /**
  * Translate a fresh `MonitorState` into the next round's prompt hints.
- * Also surfaces a one-shot `logger.warn` when the level transitioned to
- * `hard` (so users see why the rebuild hasn't fired — step-28 hasn't
- * landed yet).
  *
  * `fresh` returns `{ pressure: undefined, budget }` so callers can clear
  * a stale pressure block once the conversation drops back below soft
- * (post-rebuild — step-28 will exercise this path).
+ * (post-rebuild — step-28 wired this path via `monitor.reset()`).
+ *
+ * The `hard` level used to log a `logger.warn` here as a placeholder for
+ * step-28 ("rebuild pending"). step-28 has shipped — the QueryEngine now
+ * delegates rebuild to `engine/rebuildHook.maybeRebuild()`. We keep an
+ * `info`-level breadcrumb (without the misleading "pending" wording) so
+ * `chovy log tail` retains a trace at hard transitions; the rebuild
+ * itself emits the canonical `context.rebuild` telemetry event.
  */
 export function pendingFromMonitorState(
   state: MonitorState,
@@ -72,7 +76,7 @@ export function pendingFromMonitorState(
     state.thresholds.effectiveWindow - state.total,
   );
   if (state.transitioned && state.level === "hard") {
-    logger.warn("QueryEngine: context at hard threshold (rebuild pending)", {
+    logger.info("QueryEngine: context at hard threshold (rebuild engaged)", {
       tokens: state.total,
       hard: state.thresholds.hard,
       ctxWindow: state.thresholds.ctxWindow,

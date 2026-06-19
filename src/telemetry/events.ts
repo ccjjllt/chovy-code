@@ -46,6 +46,27 @@ export type TelemetryEvent =
   | { type: "context.threshold"; level: "soft" | "hard"; tokens: number; ts: number }
   | {
       /**
+       * step-28: emitted exactly once per SCW rebuild (hard threshold path).
+       * Single source is `src/context/rebuilder.ts` (mirrors the §22
+       * `context.threshold` / monitor single-source invariant — neither the
+       * monitor nor the QueryEngine emits this event). `tokens` is the
+       * pre-rebuild token estimate (the input that triggered rebuild);
+       * `dropped` is the count of messages elided from the live window
+       * (jsonl file is the canonical archive); `kept` is the recent-K
+       * count preserved verbatim. `durMs` is end-to-end rebuild time
+       * including selector I/O.
+       */
+      type: "context.rebuild";
+      tokens: number;
+      kept: number;
+      dropped: number;
+      checkpointBytes: number;
+      memoryEntries: number;
+      durMs: number;
+      ts: number;
+    }
+  | {
+      /**
        * step-23: emitted exactly once when `runGoal()` enters the loop.
        * Single source is `src/goals/iterations.ts`. `convergence` is the
        * resolved mode tag (`rubric` / `command` / `hybrid`); the rubric

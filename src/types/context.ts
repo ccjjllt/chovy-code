@@ -7,17 +7,35 @@
  */
 
 /**
- * Per-bucket token budget for context injection. Each request reserves a
- * fixed slice of the model's context window for these layers; the
- * remaining tokens host the active conversation tail.
+ * Per-bucket token budget for context injection. Frozen at step-28 (B6
+ * surface for SCW). The rebuilder (`src/context/rebuilder.ts`) reserves a
+ * fixed slice of the model's context window for each layer; the remainder
+ * hosts the active conversation history.
+ *
+ * Field meanings:
+ *   - `systemBase`   — base system prompt + static layers (boundary above).
+ *   - `memory`       — top-K MemoryStore records for this prompt (step-25).
+ *   - `checkpoint`   — latest.md body (step-26).
+ *   - `notes`        — scratch notes.md tail.
+ *   - `taskProgress` — active goal's progress.md tail (step-23 ↔ 28).
+ *   - `skills`       — loaded skill systemFragment (step-29).
+ *   - `tools`        — ATP tool descriptions (step-07).
+ *   - `history`      — remaining slot for conversation tail.
+ *
+ * Backward-compat aliases (deprecated) remain optional so the few existing
+ * placeholder consumers keep compiling while step-28 lands.
  */
 export interface ContextBudget {
+  systemBase: number;
   memory: number;
   checkpoint: number;
   notes: number;
+  taskProgress: number;
   skills: number;
-  /** Reserved for the conversation tail (most recent K messages). */
-  tail: number;
+  tools: number;
+  history: number;
+  /** @deprecated use `history`; kept for the step-27 placeholder consumers. */
+  tail?: number;
 }
 
 /**
