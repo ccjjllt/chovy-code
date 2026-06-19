@@ -20,6 +20,9 @@ import {
   type ReplCtx,
   type ReplGoalRuntime,
   type ReplCheckpointRuntime,
+  type ReplSkillRuntime,
+  type ReplSkillListItem,
+  type ReplSkillPlanDryRun,
 } from "./slashCommands.js";
 import {
   createGoal,
@@ -33,7 +36,17 @@ import { getCheckpointCoordinator } from "../memory/index.js";
 import { checkpointDir } from "../fs/paths.js";
 import { safeFs } from "../fs/safeFs.js";
 import { getCapability } from "../providers/capabilities.js";
-import type { GoalState } from "../types/index.js";
+import {
+  ensureBundledSkillsInitialized,
+  extractIntent,
+  getSkill,
+  listSkills as listAllSkills,
+  plan as planSkills,
+  resolveManualClosure,
+} from "../skills/index.js";
+import { computeBudget } from "../context/budgets.js";
+import { loadConfig } from "../config/config.js";
+import type { GoalState, ToolSession } from "../types/index.js";
 
 interface Props {
   provider: ProviderId;
@@ -86,6 +99,12 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
   const cancelledRef = useRef(false);
   const ctrlCArmedRef = useRef(false);
   const ctrlCTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // step-29: stable per-REPL ToolSession. Plumbed into `runAgent({ session })`
+  // every turn so manual skill activations (`/skill <name>` and SkillTool)
+  // and todos persist across turns. Engine mutates the same reference in
+  // place; the slash skill runtime mutates it as well.
+  const sessionRef = useRef<ToolSession>({ todoList: [], activeSkillFragments: {}, manualSkillNames: [] });
 
   // step-23: per-REPL goal-loop AbortController. Nullable — created on
   // /goal start, replaced on resume, dropped on completion.
@@ -276,6 +295,110 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     },
   }), [messages, goalState, provider, model]);
 
+  // ── step-29: REPL skill runtime injected into ReplCtx.skill ──────────────
+  const skillRuntime: ReplSkillRuntime = useMemo(() => ({
+    list: async (): Promise<ReplSkillListItem[]> => {
+      await ensureBundledSkillsInitialized();
+      const all = listAllSkills();
+      const active = sessionRef.current.activeSkillFragments ?? {};
+      const manual = new Set(sessionRef.current.manualSkillNames ?? []);
+      return all.map((s) => ({
+        name: s.name,
+        summary: s.summary,
+        requires: s.requires ?? [],
+        provides: s.provides ?? [],
+        conflicts: s.conflicts ?? [],
+        budgetTokens: s.budgetTokens,
+        active: Object.prototype.hasOwnProperty.call(active, s.name),
+        manual: manual.has(s.name),
+      }));
+    },
+    show: async (name: string): Promise<string | null> => {
+      await ensureBundledSkillsInitialized();
+      const s = getSkill(name);
+      return s ? s.systemFragment : null;
+    },
+    plan: async (): Promise<ReplSkillPlanDryRun> => {
+      await ensureBundledSkillsInitialized();
+      const cfg = loadConfig();
+      const budget = computeBudget(model, provider, cfg, process.env);
+      // Pull the latest user message from the live UI list (UIMessage uses
+      // the same `role` literals as ChatMessage; `system` is REPL-only).
+      const msgs = messages.filter((m) => m.role !== "system");
+      let latestUserText = "";
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i]?.role === "user" && msgs[i]?.content) {
+          latestUserText = msgs[i]!.content;
+          break;
+        }
+      }
+      const intent = extractIntent({
+        latestUserText,
+        recentMessages: msgs.slice(-8).map((m) => ({
+          role: m.role as "user" | "assistant" | "tool",
+          content: m.content,
+        })),
+        goalObjective: goalState?.objective,
+      });
+      const result = planSkills(listAllSkills(), {
+        latestUserText,
+        goalObjective: goalState?.objective,
+        manualNames: sessionRef.current.manualSkillNames ?? [],
+        budgetTokens: budget.skills,
+        recentMessages: msgs.slice(-8).map((m) => ({
+          role: m.role as "user" | "assistant" | "tool",
+          content: m.content,
+        })),
+      });
+      return {
+        selected: result.nodes.map((n) => n.skill.name),
+        droppedByBudget: result.droppedByBudget,
+        droppedByConflict: result.droppedByConflict,
+        missingRequired: result.missingRequired,
+        totalTokens: result.totalTokens,
+        budgetTokens: budget.skills,
+        tags: intent.tags.slice(0, 24),
+      };
+    },
+    activate: async (name: string, args?: string): Promise<string> => {
+      await ensureBundledSkillsInitialized();
+      const target = getSkill(name);
+      if (!target) {
+        const known = listAllSkills().map((s) => s.name).sort().join(", ");
+        return `unknown skill: ${name}. Known: ${known || "(none)"}`;
+      }
+      const registryMap = new Map(listAllSkills().map((s) => [s.name, s]));
+      const existing = new Set(Object.keys(sessionRef.current.activeSkillFragments ?? {}));
+      const closure = resolveManualClosure(target, registryMap, existing);
+      if (closure.missingRequired.length > 0) {
+        return `${name} needs missing skill(s): ${closure.missingRequired.join(", ")}`;
+      }
+      if (closure.conflictsWithActive.length > 0) {
+        return `${name} conflicts with active: ${closure.conflictsWithActive.join(", ")}`;
+      }
+      sessionRef.current.activeSkillFragments ??= {};
+      sessionRef.current.manualSkillNames ??= [];
+      const argsSuffix = args && args.trim().length > 0
+        ? `\n\n### Additional args\n${args.trim()}`
+        : "";
+      const activated: string[] = [];
+      for (const node of closure.nodes) {
+        sessionRef.current.activeSkillFragments[node.skill.name] = node.skill.systemFragment + argsSuffix;
+        activated.push(node.skill.name);
+      }
+      if (!sessionRef.current.manualSkillNames.includes(target.name)) {
+        sessionRef.current.manualSkillNames.push(target.name);
+      }
+      return activated.length === 1
+        ? `activated '${target.name}'`
+        : `activated '${target.name}' (chain: ${activated.join(", ")})`;
+    },
+    clear: async (): Promise<void> => {
+      sessionRef.current.activeSkillFragments = {};
+      sessionRef.current.manualSkillNames = [];
+    },
+  }), [messages, goalState, model, provider]);
+
   const ctx: ReplCtx = useMemo(() => ({
     setMode: (m) => setMode(m),
     appendSystem,
@@ -296,10 +419,17 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
         return `${h.id}  ${h.role.padEnd(8)}  ${h.status.padEnd(9)}  ${h.phase}  ${cost}`;
       });
     },
-    listSkills: () => [], // TODO step-29
+    listSkills: () => {
+      const active = sessionRef.current.activeSkillFragments ?? {};
+      const manual = new Set(sessionRef.current.manualSkillNames ?? []);
+      const names = Object.keys(active);
+      if (names.length === 0) return [];
+      return names.map((n) => `  ${n}${manual.has(n) ? " [MANUAL]" : ""}`);
+    },
     goal: goalRuntime,
     checkpoint: checkpointRuntime,
-  }), [appendSystem, exit, goalRuntime, checkpointRuntime]);
+    skill: skillRuntime,
+  }), [appendSystem, exit, goalRuntime, checkpointRuntime, skillRuntime]);
 
   const runSlash = useCallback(async (line: string): Promise<void> => {
     const trimmed = line.replace(/^\//, "");
@@ -353,6 +483,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
         provider,
         model,
         permissionMode: mode,
+        session: sessionRef.current,
+        goalObjective: goalState?.objective,
         onToken: (delta) => {
           if (cancelledRef.current) return;
           buf += delta;

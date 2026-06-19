@@ -413,12 +413,40 @@ agent.command("list")
     }
   });
 
-// `chovy skill ...` — TODO step-29.
-const skill = program.command("skill").description("技能操作（TODO step-29）");
-skill.command("list").description("列出已加载技能")
-  .action((...args: unknown[]) => {
+// `chovy skill ...` (step-29 — CSG).
+const skill = program.command("skill").description("技能操作（CSG — step-29）");
+skill.command("list").description("列出已注册技能")
+  .action(async (...args: unknown[]) => {
     resolveCtxFromActionArgs(args);
-    logger.info("skill list — TODO step-29");
+    const { ensureBundledSkillsInitialized, listSkills: listAll } =
+      await import("../skills/index.js");
+    await ensureBundledSkillsInitialized();
+    const all = listAll();
+    if (all.length === 0) {
+      logger.info("（暂无技能）");
+      return;
+    }
+    for (const s of all) {
+      const reqs = (s.requires?.length ?? 0) > 0 ? ` requires=${(s.requires ?? []).join(",")}` : "";
+      const provs = (s.provides?.length ?? 0) > 0 ? ` provides=${(s.provides ?? []).join(",")}` : "";
+      const conf = (s.conflicts?.length ?? 0) > 0 ? ` conflicts=${(s.conflicts ?? []).join(",")}` : "";
+      logger.info(`${s.name.padEnd(10)} tokens=${s.budgetTokens}${reqs}${provs}${conf}`);
+      logger.info(`           ${s.summary}`);
+    }
+  });
+skill.command("show <name>").description("打印技能 systemFragment 全文")
+  .action(async (name: string, ...args: unknown[]) => {
+    resolveCtxFromActionArgs(args);
+    const { ensureBundledSkillsInitialized, getSkill } =
+      await import("../skills/index.js");
+    await ensureBundledSkillsInitialized();
+    const s = getSkill(name);
+    if (!s) {
+      logger.error(`unknown skill: ${name}`);
+      process.exitCode = 1;
+      return;
+    }
+    logger.info(`# ${s.name}\n${s.summary}\n\n${s.systemFragment}`);
   });
 
 // `chovy log tail` — point at the local telemetry sink (step-03).

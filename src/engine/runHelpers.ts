@@ -25,6 +25,7 @@ import type { BuildOptions } from "../prompts/index.js";
 import type {
   ContextBudgetSnippet,
   PressureSnippet,
+  SkillFragmentsSnippet,
 } from "../prompts/index.js";
 import type { QueryRunOptions } from "./queryEngine.js";
 import {
@@ -91,6 +92,12 @@ export async function runPreflight(
  *   - `runCtx.contextBudget` — live ctx-budget line; reflects the
  *                          previous round's measured token usage so the
  *                          model sees real numbers, not a placeholder.
+ *
+ * step-29 added two more (CSG):
+ *   - `runCtx.loadedSkills` — names list for the `## Loaded skills` ToC.
+ *   - `runCtx.skillFragments` — body blocks for `## Active skills`.
+ *   Both come from `runSkillRound` (`engine/skillHook.ts`), which reads
+ *   `ToolSession.activeSkillFragments`.
  */
 export function fillBuildOptions(
   opts: QueryRunOptions,
@@ -101,6 +108,8 @@ export function fillBuildOptions(
     planMode: boolean;
     pressure?: PressureSnippet;
     contextBudget?: ContextBudgetSnippet;
+    loadedSkills?: string[];
+    skillFragments?: SkillFragmentsSnippet;
   },
 ): BuildOptions {
   const base: BuildOptions = {
@@ -110,6 +119,12 @@ export function fillBuildOptions(
       planMode: runCtx.planMode,
       ...(runCtx.pressure ? { pressure: runCtx.pressure } : {}),
       ...(runCtx.contextBudget ? { contextBudget: runCtx.contextBudget } : {}),
+      ...(runCtx.loadedSkills && runCtx.loadedSkills.length > 0
+        ? { loadedSkills: runCtx.loadedSkills }
+        : {}),
+      ...(runCtx.skillFragments && runCtx.skillFragments.fragments.length > 0
+        ? { skillFragments: runCtx.skillFragments }
+        : {}),
     },
   };
   if (!opts.systemPromptOpts) return base;

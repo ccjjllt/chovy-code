@@ -36,12 +36,14 @@ export {
   memorySection,
   notesSection,
   skillsSection,
+  skillFragmentsSection,
   contextBudgetSection,
   pressureSection,
   joinSections,
   type CwdSnippet,
   type ContextBudgetSnippet,
   type PressureSnippet,
+  type SkillFragmentsSnippet,
 } from "./snippets.js";
 
 export {

@@ -33,6 +33,7 @@ import type {
   SpawnInput,
   ToolContext,
   ToolResult,
+  ToolSession,
 } from "../types/index.js";
 
 // ── step-18: register the sub-agent spawn factory ─────────────────────────
@@ -128,6 +129,15 @@ export interface AgentOptions {
    * callers can ignore.
    */
   onUsage?: (usage: TokenUsage) => void;
+  /**
+   * step-29: caller-managed session bag. Pass the same reference across
+   * `runAgent` calls in a REPL so manual skill activations / todos
+   * survive between user turns. Sub-agents construct their own. Optional;
+   * absent ⇒ engine builds a fresh `{todoList:[]}`.
+   */
+  session?: ToolSession;
+  /** step-29: forward goal objective for CSG planner scoring. */
+  goalObjective?: string;
 }
 
 /**
@@ -216,6 +226,8 @@ function buildRunOptions(
           /* legacy callback only fires on start; end is observed via final result */
         }
       : undefined,
+    session: opts.session,
+    goalObjective: opts.goalObjective,
   };
 
   // Layer 3 of the system prompt: user-supplied custom prompt (the legacy

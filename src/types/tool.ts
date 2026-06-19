@@ -178,6 +178,36 @@ export interface TodoItem {
 export interface ToolSession {
   /** Agent-maintained todo list. Undefined ⇒ "no list yet" (read as empty). */
   todoList?: TodoItem[];
+
+  /**
+   * step-29 (CSG) addition (frozen-extension; AGENTS.md §16).
+   *
+   * Active skill systemFragments keyed by `Skill.name`. Two writers:
+   *   - The CSG planner (`src/engine/skillHook.ts:runSkillRound`) populates
+   *     this each round when `CHOVY_SKILLS_AUTO=1` / `feature('skills.auto')`
+   *     is on. The planner replaces the auto-selected subset wholesale.
+   *   - `SkillTool.run` (manual mode) merges entries here when the user /
+   *     model invokes `skill({ skill: 'commit' })`. Manual entries are
+   *     marked with `manual=true` (carried in a sibling map below) so the
+   *     planner can preserve them across rounds.
+   *
+   * The prompt builder (`src/engine/skillHook.ts` → `runHelpers.fillBuildOptions`
+   * → `SystemContext.skillFragments`) reads this map each round and emits a
+   * `<skill name="...">` block via `skillFragmentsSection`.
+   *
+   * Undefined ⇒ "no skills active" (treat as empty map). Storing the bodies
+   * (not just names) avoids re-rendering on every prompt build and keeps the
+   * fragment text stable across rounds even if the registry changes.
+   */
+  activeSkillFragments?: Record<string, string>;
+
+  /**
+   * Names of skills the user / model activated *manually* (via SkillTool or
+   * `/skill <name>`). Distinct from auto-selected names so the planner can
+   * keep them across rounds without re-scoring. Subset of
+   * `Object.keys(activeSkillFragments)`. Frozen-extension; optional.
+   */
+  manualSkillNames?: string[];
 }
 
 /**

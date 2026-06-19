@@ -3,6 +3,7 @@ import type { CreateGoalInput, RunGoalResult } from "../goals/index.js";
 import type { GoalState } from "../types/index.js";
 import { goalSlashEntry } from "./slashCommands/goal.js";
 import { checkpointSlashEntry } from "./slashCommands/checkpoint.js";
+import { skillSlashEntry } from "./slashCommands/skill.js";
 
 /**
  * Read-only/mutator surface that slash command handlers receive. Keeping
@@ -36,6 +37,14 @@ export interface ReplCtx {
    * slash handler stays UI-only (mirrors the §goal pattern).
    */
   checkpoint?: ReplCheckpointRuntime;
+  /**
+   * step-29: CSG skill runtime injected by the REPL. Absent in headless
+   * contexts — `/skill` handler reports a clean error when undefined.
+   * UI-only; the runtime closes over the live cwd / threadId / session
+   * (so manual activations land on the same `ToolSession.activeSkillFragments`
+   * the engine reads on the next round).
+   */
+  skill?: ReplSkillRuntime;
 }
 
 /**
@@ -72,6 +81,51 @@ export interface ReplCheckpointRuntime {
   triggerNow(): Promise<string>;
   /** List archived checkpoint files (basename + size + iso ts). */
   list(): Promise<{ name: string; bytes: number; ts: string }[]>;
+}
+
+/**
+ * Per-skill summary row returned by `/skill list`. Pre-formatted by the
+ * runtime so the slash handler stays trivial (just `appendSystem`).
+ */
+export interface ReplSkillListItem {
+  name: string;
+  summary: string;
+  requires: string[];
+  provides: string[];
+  conflicts: string[];
+  budgetTokens: number;
+  /** True iff in `session.activeSkillFragments` (auto or manual). */
+  active: boolean;
+  /** True iff in `session.manualSkillNames`. */
+  manual: boolean;
+}
+
+/** Dry-run output of `/skill plan`. */
+export interface ReplSkillPlanDryRun {
+  selected: string[];
+  droppedByBudget: string[];
+  droppedByConflict: string[];
+  missingRequired: string[];
+  totalTokens: number;
+  budgetTokens: number;
+  tags: string[];
+}
+
+/**
+ * Runtime hooks for `/skill` (step-29). UI-only — the handler imports
+ * `src/skills/` (a leaf) but the runtime closes over the live REPL
+ * `ToolSession` so manual activations are visible to the next agent
+ * round (the engine reads `session.activeSkillFragments` per turn via
+ * `runSkillRound`).
+ */
+export interface ReplSkillRuntime {
+  list(): Promise<ReplSkillListItem[]>;
+  show(name: string): Promise<string | null>;
+  plan(): Promise<ReplSkillPlanDryRun>;
+  /** Activate a skill (and its requires); returns a status message. */
+  activate(name: string, args?: string): Promise<string>;
+  /** Clear all manual + auto activations from the session. */
+  clear(): Promise<void>;
 }
 
 export type SlashHandler = (args: string, ctx: ReplCtx) => Promise<void> | void;
@@ -145,8 +199,10 @@ export const slashCommands: Record<string, SlashEntry> = {
     },
   },
 
+  skill: skillSlashEntry,
+
   skills: {
-    help: "列出已加载技能（TODO step-29）",
+    help: "已加载技能名单（别名：/skill list）",
     handler: (_args, ctx) => {
       const xs = ctx.listSkills();
       ctx.appendSystem(xs.length ? xs.join("\n") : "（暂无技能）");

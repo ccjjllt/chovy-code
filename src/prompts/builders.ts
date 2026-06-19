@@ -35,10 +35,12 @@ import {
   modelSection,
   notesSection,
   pressureSection,
+  skillFragmentsSection,
   skillsSection,
   type ContextBudgetSnippet,
   type CwdSnippet,
   type PressureSnippet,
+  type SkillFragmentsSnippet,
 } from "./snippets.js";
 import { _fnv1aForTesting as fnv1a } from "./fingerprint.js";
 
@@ -63,6 +65,11 @@ export interface SystemContext {
   memoryText?: string;
   notesText?: string;
   loadedSkills?: string[];
+  /** CSG active-skill fragments (step-29). The engine fills this from
+   *  `ToolSession.activeSkillFragments` via `runSkillRound`; the prompt
+   *  builder renders each as a `<skill name="...">` block in the dynamic
+   *  suffix. Undefined or empty ⇒ no `## Active skills` section. */
+  skillFragments?: SkillFragmentsSnippet;
   contextBudget?: ContextBudgetSnippet;
   /** SCW pressure block (step-27). Renders nothing when omitted or
    *  `level === 'fresh'`; the engine fills it after monitor.inspect()
@@ -159,6 +166,7 @@ export function buildEffectiveSystemPrompt(opts: BuildOptions): EffectivePrompt 
     omitMemory ? "" : memorySection(opts.context.memoryText),
     omitMemory ? "" : notesSection(opts.context.notesText),
     skillsSection(opts.context.loadedSkills),
+    skillFragmentsSection(opts.context.skillFragments),
     contextBudgetSection(opts.context.contextBudget),
     pressureSection(opts.context.pressure),
   ]);

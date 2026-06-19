@@ -214,6 +214,37 @@ export type TelemetryEvent =
       mode: "agent" | "fallback";
       durMs: number;
       ts: number;
+    }
+  | {
+      /**
+       * step-29 (CSG): emitted exactly once per `runSkillRound` call (which
+       * includes manual-only no-ops and skipped/disabled rounds — those just
+       * report `selected: []` and `mode: 'manual-only'`). Single source is
+       * `src/engine/skillHook.ts`; SkillTool / slash commands MUST NOT emit
+       * this directly (mirrors the §22 `context.threshold` invariant).
+       *
+       * `mode` distinguishes:
+       *   - `auto` — planner ran (CHOVY_SKILLS_AUTO=1 or feature flag on).
+       *   - `manual-only` — auto disabled; only manual activations carried.
+       *   - `disabled` — registry empty / engine call short-circuited.
+       *
+       * `fingerprintHit:true` means the planner reused the lock without
+       * re-scoring (intent unchanged from last round). `droppedByBudget`
+       * counts skills culled to keep `Σ budgetTokens ≤ ContextBudget.skills`;
+       * `droppedByConflict` counts those lost to same-conflict-group
+       * resolution.
+       */
+      type: "skill.plan";
+      mode: "auto" | "manual-only" | "disabled";
+      selected: string[];
+      droppedByBudget: number;
+      droppedByConflict: number;
+      missingRequired: number;
+      totalTokens: number;
+      budgetTokens: number;
+      fingerprintHit: boolean;
+      durMs: number;
+      ts: number;
     };
 
 /** Type of an event with `ts` filled in by the sink (so callers can omit it). */

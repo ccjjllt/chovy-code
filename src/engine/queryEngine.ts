@@ -75,6 +75,7 @@ import { runStream } from "./streamHandler.js";
 import { executeToolCall } from "./toolExecutor.js";
 import { createContextMonitorIfEnabled } from "./contextHook.js";
 import { runScwRound } from "./rebuildHook.js";
+import { runSkillRound } from "./skillHook.js";
 import {
   buildSpawnHandles,
   fillBuildOptions,
@@ -126,6 +127,13 @@ export interface QueryRunOptions {
 
   /** Budget hint for SCW (step-27/28). */
   contextBudget?: ContextBudget;
+
+  /** Active goal objective (step-29 CSG input). Optional; goal loop sets it. */
+  goalObjective?: string;
+
+  /** step-29: caller-provided session bag (REPL passes a stable ref so
+   *  manual skill activations / todos persist across runs). Frozen-extension. */
+  session?: ToolSession;
 
   /** Hard cap on tool-call rounds; default 8. */
   maxRounds?: number;
@@ -245,7 +253,7 @@ export class QueryEngine {
       settingsPaths: opts.hooksSettingsPaths,
     });
 
-    const session: ToolSession = { todoList: [] };
+    const session: ToolSession = opts.session ?? { todoList: [] };
 
     const messages: ChatMessage[] = [...opts.messages];
 
@@ -375,19 +383,25 @@ export class QueryEngine {
           break;
         }
 
+        // ── 0. CSG planner — step-29 ──────────────────────────────────────
+        // Runs BEFORE prompt build so this round's prompt includes any
+        // newly-activated `<skill>` blocks. Cap preserved via skillHook.ts.
+        const skillRound = await runSkillRound({
+          messages, session, agentRole: role, cwd, cfg: config,
+          provider: opts.provider, model, goalObjective: opts.goalObjective,
+        });
+
         // ── 1. system prompt ──────────────────────────────────────────────
         // step-27: pendingPressure / live ctx-budget arrive from the previous
         // round's monitor.inspect; the FIRST round always sees `fresh` since
-        // the monitor hasn't run yet. Subsequent rounds reflect the latest
-        // measurement.
+        // the monitor hasn't run yet.
         const effective: EffectivePrompt = buildEffectiveSystemPrompt(
           fillBuildOptions(opts, {
-            provider: opts.provider,
-            model,
-            cwd,
+            provider: opts.provider, model, cwd,
             planMode: permState.mode === "plan",
-            pressure: pendingPressure,
-            contextBudget: pendingBudget,
+            pressure: pendingPressure, contextBudget: pendingBudget,
+            loadedSkills: skillRound.loadedSkills,
+            skillFragments: skillRound.skillFragments,
           }),
         );
 
@@ -437,35 +451,24 @@ export class QueryEngine {
 
         // ── 4. normalize messages for provider ────────────────────────────
         const cleaned = pruneOrphanToolMessages(messages);
-        const normalized = normalizeForProvider(cleaned, {
-          provider: opts.provider,
-        });
+        const normalized = normalizeForProvider(cleaned, { provider: opts.provider });
 
         // ── 5. provider call (stream when possible) ───────────────────────
         if (ctx.hooks?.emit) {
           try {
             await ctx.hooks.emit("PreApiCall", {
-              extra: {
-                provider: opts.provider,
-                model,
-                tools: described.map((d) => d.name),
-              },
+              extra: { provider: opts.provider, model, tools: described.map((d) => d.name) },
             });
           } catch { /* best-effort */ }
         }
 
         const reqOpts = {
-          model,
-          messages: normalized,
-          systemPrompt: effective.text,
-          temperature: opts.temperature,
-          maxTokens: opts.maxTokens,
+          model, messages: normalized, systemPrompt: effective.text,
+          temperature: opts.temperature, maxTokens: opts.maxTokens,
           tools: described.map((d) => d.name),
           toolSpecs: described.map((d) => ({
-            name: d.name,
-            description: d.description,
-            schemaJson: d.schemaJson,
-            level: d.level,
+            name: d.name, description: d.description,
+            schemaJson: d.schemaJson, level: d.level,
           })),
         };
 
@@ -578,17 +581,9 @@ export class QueryEngine {
 
     const totals = cost.cumulativeTotal();
     return {
-      finalContent,
-      messages,
-      costUSD: totals.usd,
-      tokens: {
-        in: totals.tokensIn,
-        out: totals.tokensOut,
-        cacheRead: totals.cacheRead,
-      },
-      rounds,
-      stopReason,
-      shapes,
+      finalContent, messages, costUSD: totals.usd,
+      tokens: { in: totals.tokensIn, out: totals.tokensOut, cacheRead: totals.cacheRead },
+      rounds, stopReason, shapes,
     };
   }
 

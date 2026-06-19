@@ -13,7 +13,7 @@
 `chovy-code` 是一个用 **Bun + TypeScript + React/Ink** 构建的多 provider 编码代理 CLI，
 对标 Claude Code / cc-haha，但在 5 处做了差异化创新（ATP / SwarmR / TMT / SCW / CSG，详见 `docs/innovations.md`）。
 
-当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）、Phase G step-24（Memory Store：bun:sqlite + FTS5 + 4 类记忆）+ step-26（Checkpoint Writer：协调器 + 路径沙箱 + 7 段模板 + fallback）+ Phase H step-27（Context Monitor：自适应阈值 + ContextMonitor + `<context-pressure>` 注入 + soft 自动 checkpoint + HeaderBar 实时 ctx % 颜色 + `CHOVY_CTX_DISABLE` 开关）+ Phase H step-28（Context Rebuild：ContextBudget 8 桶 + 4 selector + sessions/jsonl 归档 + `<context-rebuilt>` marker + ContextRebuilt hook + context.rebuild telemetry + cost.cumulativeTotal 防 budget 绕过 + monitor.reset）全部完成构建并通过复验；下一步进入 step-25（Memory Injection）+ step-29（CSG）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`；Phase G step-24 验收报告见 `docs/complete/step-24-acceptance.md`；step-26 验收报告见 `docs/complete/step-26-acceptance.md`；**Phase A-G 综合复验报告见 `docs/complete/phase-a-g-acceptance.md`**（重点复验 Phase G，修复 step-24↔step-26 bridge smoke / `nul` 残留 / step-26 文档准确性 3 项）；Phase H step-27 验收报告见 `docs/complete/step-27-acceptance.md`（48 用例 PASS + smoke-step23/24/26 回归全过）；**Phase H step-28 验收报告见 `docs/complete/step-28-acceptance.md`**（76 用例 PASS + smoke-step18/20/22/23/24/26/27 回归全过 = 423 PASS / 0 FAIL）。
+当前阶段：**Phase A（Foundation）、Phase B（Tool System v2）、Phase C（Harness）、Phase D（Agent Core：System Prompt + QueryEngine + 7 provider 真实接线）、Phase E（Sub-Agent + SwarmR + Judge + Agent UI）、Phase F（Goal Loop）、Phase G step-24（Memory Store：bun:sqlite + FTS5 + 4 类记忆）+ step-26（Checkpoint Writer：协调器 + 路径沙箱 + 7 段模板 + fallback）+ Phase H step-27（Context Monitor：自适应阈值 + ContextMonitor + `<context-pressure>` 注入 + soft 自动 checkpoint + HeaderBar 实时 ctx % 颜色 + `CHOVY_CTX_DISABLE` 开关）+ Phase H step-28（Context Rebuild：ContextBudget 8 桶 + 4 selector + sessions/jsonl 归档 + `<context-rebuilt>` marker + ContextRebuilt hook + context.rebuild telemetry + cost.cumulativeTotal 防 budget 绕过 + monitor.reset）+ Phase I step-29（Skill Graph CSG：Skill/SkillNode/SkillTriggers 冻结 + 7 bundled skills + planner BFS closure + conflict resolution + budget cascade + skills.lock fingerprint cache + skill.plan telemetry + ToolSession.activeSkillFragments + dynamic suffix 注入 + SkillTool 真实化 + REPL `/skill list|show|plan|<name>|clear` + `chovy skill list/show` CLI + auto-OFF default via `CHOVY_SKILLS_AUTO=1` / `feature('skills.auto')`）全部完成构建并通过复验；下一步进入 step-25（Memory Injection）+ step-30（端到端集成）**。Phase A-E 复验报告见 `docs/complete/phase-a-e-acceptance.md`；Phase F (step-23) 验收报告见 `docs/complete/step-23-acceptance.md`；Phase G step-24 验收报告见 `docs/complete/step-24-acceptance.md`；step-26 验收报告见 `docs/complete/step-26-acceptance.md`；**Phase A-G 综合复验报告见 `docs/complete/phase-a-g-acceptance.md`**（重点复验 Phase G，修复 step-24↔step-26 bridge smoke / `nul` 残留 / step-26 文档准确性 3 项）；Phase H step-27 验收报告见 `docs/complete/step-27-acceptance.md`（48 用例 PASS + smoke-step23/24/26 回归全过）；**Phase H step-28 验收报告见 `docs/complete/step-28-acceptance.md`**（76 用例 PASS + smoke-step18/20/22/23/24/26/27 回归全过 = 423 PASS / 0 FAIL）。
 阶段划分（详见 `docs/README.md §1`）：A=01–05、B=06–11、C=12–14、D=15–17、E=18–22、F=23、G=24–26、H=27–28、I=29–30。
 每一步的产物/验收报告见 `docs/complete/`；本文不重复逐步进度。
 
@@ -753,6 +753,73 @@ chovy log tail                   # 看 telemetry
 
 **`budgetOverride` 测试入口**：
 - `RebuildContextInput.budgetOverride?: ContextBudget` 仅用于 SCW smoke / 调参；生产路径**永远**走 `computeBudget()`（无内部预算硬编码）。后续 step-29 引入 dynamic skills budget 调整时，应在 `computeBudget` 内部加分支（基于 cfg.skills.maxTokens 等），**不**绕过去自手卷 budget。
+
+## 24. Phase I 不变量（Skill Graph — CSG 创新）
+
+> Phase I step-29 产物/验收见 `docs/complete/step-29-acceptance.md`。本节固化 step-29 跨步骤生效的不变量；后续 step-30（端到端集成）扩展对应模块时必须遵守。
+
+**单源规约**（接 §16/§17/§18/§19/§20/§21/§22/§23 同模式）：
+- `Skill` / `SkillNode` / `SkillTriggers` → `src/types/skill.ts`（step-29 B7 屏障冻结，architecture.md §3.3）；step-28 之前的 draft 字段（`id`/`description`/`match`/`body`/`approxTokens`）已替换为 spec 字段（`name`/`summary`/`triggers`/`systemFragment`/`budgetTokens` + 新增 `conflicts`），零外部 in-tree 消费方。后续 step-30 用 `import type` 复用，**禁止**重声明 union；扩展只追加可选字段（frozen-extension）。
+- `skill.plan` telemetry 单源 = `src/engine/skillHook.ts:runSkillRound`；SkillTool / slash 命令 / CLI 全部为消费方，**不**直发；与 §17 `tool.call`、§17 `agent.cost`、§18 `swarm.dispatch`、§20 `memory.index`、§21 `checkpoint.written`、§22 `context.threshold`、§23 `context.rebuild` 同模式。
+- **registry 单源** = `src/skills/registry.ts`；duplicate-name 抛错（与 `tools/registry.ts` 同纪律）；bundled lazy init via `ensureBundledSkillsInitialized()`（idempotent + 可被 `markBundledInitialized()` 抑制供测试用）。
+- **`skills.lock` 路径单源** = `src/fs/paths.ts:skillsLockFile(cwd)` → `~/.chovy/projects/<id>/skills.lock`；`src/skills/lock.ts` 是唯一对该路径执行 `safeFs.write` / `safeFs.read` 的模块（mirror `src/goals/goalState.ts` 持久化模式）。
+- **planner 单源** = `src/skills/planner.ts:plan(registry, input)`；REPL `/skill plan` dry-run、`runSkillRound` auto path 都调同一函数（避免规则漂移）。
+- **prompt 注入单源** = `src/prompts/snippets.ts:skillFragmentsSection`；位于 dynamic suffix（不污染 staticHash），与 `pressureSection` / `skillsSection` 同位。
+
+**冻结接口**（字段名不改，扩展只追加可选字段）：
+- `Skill`（step-29 B7 冻结）：8 字段 `name/summary/triggers/requires?/provides?/conflicts?/systemFragment/budgetTokens`；扩展**追加**字段不替换。
+- `SkillNode`（step-29 B7 冻结）：2 字段 `skill/score`；扩展追加。
+- `SkillTriggers`（step-29 冻结）：3 字段 `keywords?/patterns?/when?`；`when` 联合扩展只新增成员（`'on-request'|'pre-tool'|'always'`），不替换。
+- `ToolSession.activeSkillFragments?` / `ToolSession.manualSkillNames?`（step-29 追加，§16 frozen-extension）：optional 添加，旧 callers 视作 `undefined`（语义 = 空）；新 callers 必须容忍 undefined（治理性 ?? 兜底）。
+- `SystemContext.skillFragments?: SkillFragmentsSnippet`（step-29 追加，§Phase D §17 frozen-extension）：仅在 dynamic 半区，**不**影响 `staticHash`。
+- `QueryRunOptions.session?` / `QueryRunOptions.goalObjective?`（step-29 追加，§17 frozen-extension）：REPL 跨轮持久化 + goal-loop CSG 输入；sub-agent 不传 → 引擎构造空 session。
+- `AgentOptions.session?` / `AgentOptions.goalObjective?`（step-29 追加，§Phase D §17 frozen-extension）：透传到 QueryRunOptions。
+
+**Auto-planner 默认 OFF（least-surprise）**：
+- `CHOVY_SKILLS_AUTO=1` env OR `feature('skills.auto')` 打开；二选一即触发。`CHOVY_SKILLS_AUTO=0` 显式关闭，覆盖 feature flag。
+- 与 §17 `feature('auto.classifier') 默认 off` 同纪律 + AGENTS.md §5 红线 / §9 反模式：不在用户没要求时偷偷塞 ~2-4K 技能 prompt 进 ctx。
+- 手动模式（SkillTool / `/skill <name>`）始终可用，无需开关。auto-off 时 `runSkillRound` 仅返回 manual entries，不调用 planner，但仍 emit 一条 `skill.plan { mode: 'manual-only' }` 供监控。
+
+**取消传播不变量（CSG）**：
+- `runSkillRound` 是同步纯计算（regex 匹配 + Map 操作 + 一次 lock IO）；不 spawn，不需独立 AC。`parentSignal` 仅用于 future 异步 selectors（step-30 LLM 评分 fallback）；今天**不**接入。
+- `SkillTool.run` 同步，亦不需独立 AC。skill body 内部建议使用的工具（bash / file_edit）在它们自身的 `run` 中各自处理 abort（§9 红线）。
+
+**fingerprint 缓存键不变量**（spec line 104-115）：
+- `computeFingerprint(input, intent, _ignored)` 仅用 **inputs** 作为 key：`latestUserText + goalObjective + sortedManualNames + budgetTokens + intent.tags + intent.hasRecentToolHint`。
+- 输出 `selectedNames` **不**参与 key（避免缓存循环依赖：键依赖输出会让 cache 永远 miss）。
+- lock 命中时直接复用 `lock.lastSelected`，跳过 plan() — 这是 §"性能" 章节的核心优化点。
+- 缓存失效条件：用户消息改变 / goal 改变 / 手动锁集合改变 / budget 改变 / 最近工具调用类型改变（intent.hasRecentToolHint）。
+
+**closure / conflict / budget 算法不变量**：
+- `computeClosure`：BFS over `requires`，inherited score = `max(0.5, parentScore - 0.1)`，访问集去重防 cycle；missing required → 报告但不抛。
+- `resolveConflicts`：高分胜出，ties broken by 名字字典序（确定性）；同 conflict 组多 victim 全部 drop。
+- `enforceBudget`：lowest-score 驱逐 + cascade drop（依赖被驱逐时，依赖方也被驱逐，避免悬空 require）；`capTokens ≤ 0` → 全部驱逐（degenerate 但 defined）。
+- `resolveManualClosure`：与 auto closure 共享 BFS，但 missing-required 视为 FATAL 由 caller 处理；conflicts-with-active 也 FATAL；继承分数无意义（manual = 锁定）。
+
+**queryEngine.ts ≤ 600 行（硬限）守恒**：
+- 当前 594 行（恰至硬限 - 6）。step-29 通过：① 把 `runSkillRound` 调用抽到 `engine/skillHook.ts`（同 §17 / §22 / §23 hook.ts 模式）；② 内联多行结构 `{...}` → 单行 `{...}`；③ 不在 queryEngine.ts 内加新 import 链（computeBudget 在 skillHook.ts 内调用）。
+- 后续 step-30 端到端接入时**不要**把逻辑塞回 queryEngine.ts；继续抽 helper（如 step-30 user-skill loader → `engine/skillHook.ts` 内扩展）或新建 hook 模块。
+
+**依赖图无环**：
+- `src/skills/*` 是叶子模块：可被 `src/engine/skillHook.ts` / `src/tools/meta/skill.ts` / `src/cli/slashCommands/skill.ts` / `src/cli/repl.tsx` / `src/cli/index.tsx` / `scripts/smoke-step29.ts` 引用，**不**反向 import `engine` / `providers` / `agent` / `swarm` / `goals` / `memory` / `context`（与 §22/§23 同模式）。
+- `src/engine/skillHook.ts` import `src/skills/index` + `src/context/budgets` + `src/types/*` + `src/config/*` + `src/logger` + `src/telemetry` + `src/prompts` (types only)；queryEngine.ts 通过 `runSkillRound` 单点调用，避免直接 import `plan / extractIntent` 散落。
+- `src/cli/repl.tsx` import `src/skills/index` 是 **UI-only** 边界（slash runtime + dry-run 都在 REPL 内执行，不进 engine）；与 §19 `goalRuntime` / §21 `checkpointRuntime` 同模式。
+- `src/tools/meta/skill.ts` reach `src/skills/index` 是 leaf-reach（registry / graph / closure 都在 leaf）；不经过 engine barrel 避免任何成环可能。
+
+**skill body / fragment 体积上限**：
+- `src/prompts/snippets.ts:SKILL_FRAGMENT_BODY_CAP = 8000` 字符（≈2k token）每片段硬截断 — 防御一个误配置 skill 把 prompt 撑爆。
+- 整体 skill 预算由 `ContextBudget.skills` 决定（默认 8000 tokens；`src/context/budgets.ts:DEFAULT_SLABS.skills`）—— planner 在选择阶段就强制总和 ≤ 该值。两层守门（per-fragment cap 是兜底，per-budget cap 是策略）。
+
+**用户自定义 skill 留 step-30**：
+- 当前 7 bundled skills (`commit/format/pr/refactor/review/test/ts-fix`) 满足 spec 验收。
+- step-30 端到端集成将加 `~/.chovy/skills/<name>/SKILL.md` frontmatter 解析 + `loadSkillsDir(path)` API；接入点：`registry.ensureBundledSkillsInitialized` 之后追加 `loadUserSkills(chovyHome())` 调用即可（registry duplicate-name 抛错就近暴露冲突）。
+- 不向 `Skill` 类型加新字段 — 用户 frontmatter 应映射到既有字段（`name` / `summary` / `triggers.keywords` / `requires` / `provides` / `conflicts` / 内联 markdown body 作 `systemFragment`）。
+
+**与 spec 偏离的两处**（`docs/complete/step-29-acceptance.md §5` 详）：
+1. Skill 类型字段名对齐 spec（drop 草稿别名）—— 草稿零 in-tree 消费方，spec 是 docs/ 权威。
+2. prompt 注入用 dynamic suffix（不用 default-layer append）—— 保 PSF staticHash 跨轮稳定，与 step-15 §15 不变量对齐。
+两处均与用户在 plan 阶段确认。
+
 
 
 

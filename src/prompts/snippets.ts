@@ -158,3 +158,41 @@ export function pressureSection(p?: PressureSnippet): string {
 export function joinSections(sections: Array<string | undefined>): string {
   return sections.filter((s): s is string => Boolean(s && s.trim())).join("\n\n");
 }
+
+/**
+ * CSG active-skill fragments block (step-29 §"Prompt 注入").
+ *
+ * Rendered when one or more skills are active for this round (planner-picked
+ * or manually activated). Sits in the dynamic suffix below the boundary so:
+ *   - The bodies don't churn `staticHash` between rounds (PSF stability).
+ *   - The model sees them at the END of the prompt — closest to the user
+ *     turn — which empirically improves recall of skill-specific
+ *     conventions over wedging them in the static half.
+ *
+ * `skillsSection` (above) emits ONLY the names list for ToC purposes;
+ * this section emits the bodies. They are complementary: the model gets
+ * a quick "what's loaded" summary plus the full instructions.
+ */
+export interface SkillFragmentsSnippet {
+  fragments: Array<{ name: string; body: string }>;
+}
+
+/** Per-fragment body cap — defensive guard against runaway skills.
+ *  The planner already enforces `Σ budgetTokens` against ContextBudget;
+ *  this is a hard char ceiling per fragment so a single misconfigured
+ *  skill can't explode the prompt. */
+const SKILL_FRAGMENT_BODY_CAP = 8000; // chars; ≈2k tokens
+
+export function skillFragmentsSection(s?: SkillFragmentsSnippet): string {
+  if (!s || s.fragments.length === 0) return "";
+  const blocks: string[] = [];
+  for (const f of s.fragments) {
+    if (!f.name || !f.body) continue;
+    const body = f.body.length > SKILL_FRAGMENT_BODY_CAP
+      ? f.body.slice(0, SKILL_FRAGMENT_BODY_CAP) + "\n…(truncated)"
+      : f.body;
+    blocks.push(`<skill name="${f.name}">\n${body}\n</skill>`);
+  }
+  if (blocks.length === 0) return "";
+  return `## Active skills\n${blocks.join("\n\n")}`;
+}
