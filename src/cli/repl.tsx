@@ -13,6 +13,8 @@ import { StatusLine } from "./components/StatusLine.js";
 import { SwarmPanel } from "./components/SwarmPanel.js";
 import { GoalPanel } from "./components/GoalPanel.js";
 import { InputBox } from "./inputBox.js";
+import { useTerminalCaps } from "../tui/capabilities.js";
+import { mountCompanion, CompanionHost, companionReservedColumns, type CompanionHandle } from "../companion/index.js";
 import { useSwarmState, swarmCounts } from "./state/swarmStore.js";
 import {
   slashCommands,
@@ -85,8 +87,21 @@ const newId = (): string => {
 export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactElement {
   const { exit } = useApp();
   const sm = getCompanionStateMachine();
+  const caps = useTerminalCaps();
+  const companionRef = useRef<CompanionHandle>();
+  const [speaking, setSpeaking] = useState(false);
 
-  useEffect(() => () => sm.dispose(), [sm]);
+  useEffect(() => {
+    companionRef.current = mountCompanion({ cwd: process.cwd(), muted: false });
+    const unsubscribe = sm.onChange((s) => {
+      if (s === "done" || s === "error") setSpeaking(true);
+      else if (s === "idle" || s === "work") setSpeaking(false);
+    });
+    return () => {
+      unsubscribe();
+      companionRef.current?.dispose();
+    };
+  }, [sm]);
 
   const [messages, setMessages] = useState<UIMessage[]>(() => [{
     id: newId(),
@@ -770,14 +785,17 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
         </Box>
       ) : null}
 
-      <Box marginTop={1}>
-        <InputBox
-          disabled={busy}
-          history={history}
-          onSubmit={send}
-          onCancel={onCancel}
-          onCtrlC={onCtrlC}
-        />
+      <Box marginTop={1} flexDirection="row" alignItems="flex-end">
+        <Box flexGrow={1} flexDirection="column" width={caps.cols - companionReservedColumns(caps.cols, speaking)}>
+          <InputBox
+            disabled={busy}
+            history={history}
+            onSubmit={send}
+            onCancel={onCancel}
+            onCtrlC={onCtrlC}
+          />
+        </Box>
+        <CompanionHost cwd={process.cwd()} reservedCols={companionReservedColumns(caps.cols, speaking)} />
       </Box>
       {focus !== "input" ? (
         <Text dimColor>{`  (panel focused: ${focus} — Tab to cycle)`}</Text>

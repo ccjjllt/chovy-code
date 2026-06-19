@@ -21,3 +21,24 @@ export function stringWidth(s: string): number {
   }
   return w;
 }
+
+export function wrapByDisplayWidth(text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  let currentLine = "";
+  let currentWidth = 0;
+  for (const char of text) {
+    const cw = stringWidth(char);
+    if (currentWidth + cw > maxWidth && currentLine.length > 0) {
+      lines.push(currentLine);
+      currentLine = char;
+      currentWidth = cw;
+    } else {
+      currentLine += char;
+      currentWidth += cw;
+    }
+  }
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  return lines;
+}
