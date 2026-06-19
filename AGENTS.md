@@ -53,3 +53,4 @@
 ### 完成与验收记录
 
 - **Phase J**: [x] 基础设施阶段已验收，B8 屏障已冻结，Theme/Locale/KeyBinding/ComponentKit 已就位。修复了 CHOVY_NO_TUI=1 全局组件兜底模式。（见 `docs/complete/phase-j-acceptance.md`）
+- **Phase K**: [x] 虚拟伙伴系统已验收，B9 屏障已冻结，终端 GIF 渲染与多状态调度已通过测试。互动与隐藏配置持久化稳定。（见 `docs/complete/phase-k-acceptance.md`）
