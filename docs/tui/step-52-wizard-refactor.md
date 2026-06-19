@@ -4,7 +4,7 @@
 
 ## 目标
 
-让 `chovy config` CLI 子命令、REPL `/config` slash、Settings → Provider tab **三处入口**复用同一套
+让 `chovy config` CLI 子命令、REPL `/config` slash、Settings → Provider / Model tab **三处入口**复用同一套
 SettingsField 写入路径。**外部行为完全不变**（AGENTS.md §26 配置入口不变量），只重构内部。
 
 ## 产物
@@ -43,7 +43,7 @@ export async function runConfigWizard(opts?: { nonInteractive?: { provider?: str
   // 非交互分支：直接调 runFieldOnce
   if (opts?.nonInteractive) {
     if (opts.nonInteractive.provider) await runFieldOnce("provider.current", opts.nonInteractive.provider);
-    if (opts.nonInteractive.model)    await runFieldOnce("provider.model", opts.nonInteractive.model);
+    if (opts.nonInteractive.model)    await runFieldOnce("model.current", opts.nonInteractive.model);
     if (opts.nonInteractive.apiKey)   await runFieldOnce("provider.apiKey", opts.nonInteractive.apiKey);
     return;
   }
@@ -51,7 +51,7 @@ export async function runConfigWizard(opts?: { nonInteractive?: { provider?: str
   const provider = await pickProviderInteractive();
   await runFieldOnce("provider.current", provider);
   const model = await pickModelInteractive(provider);
-  await runFieldOnce("provider.model", model);
+  await runFieldOnce("model.current", model);
   if (!hasSecret(provider)) {
     const key = await readSecretInteractive(provider);
     await runFieldOnce("provider.apiKey", key);
@@ -78,14 +78,14 @@ export const configHandler: SlashHandler = async (args, ctx) => {
 
 ReplCtx.config.run 实现内部直接 `await runConfigWizard()`——同 wizard 路径。
 
-### 5. Settings → Provider tab
+### 5. Settings → Provider / Model tab
 
-无改动（step-49 已经实现）；Provider tab 内 fields 的 write 是 SettingsField.write，与 wizard 路径合流。
+无改动（step-49 已经实现）；Provider / Model tab 内 fields 的 write 是 SettingsField.write，与 wizard 路径合流。
 
 ### 6. 单元层 commit 路径图
 
 ```
-chovy config (CLI)         /config (REPL)         Ctrl+, → Provider tab
+chovy config (CLI)         /config (REPL)         Ctrl+, → Provider / Model tab
        │                          │                          │
        ▼                          ▼                          ▼
    runConfigWizard           runConfigWizard            FieldRow → setDirty → commitDirty
@@ -124,7 +124,7 @@ chovy config (CLI)         /config (REPL)         Ctrl+, → Provider tab
 
 - `bun run typecheck` 通过；
 - `bun run smoke` 全过（包含既有 §26 配置入口 smoke 无 regression）；
-- 三入口手测：`chovy config` / `/config` / Ctrl+,→Provider 全都能改 provider/model/apiKey，写入路径相同；
+- 三入口手测：`chovy config` / `/config` / Ctrl+,→Provider/Model 全都能改 provider/model/apiKey，写入路径相同；
 - `bin/chovy.js` 构建后 hash 与重构前一致（脚本 sha256 比对）；
 - 非交互 `chovy config --non-interactive --provider deepseek --model deepseek-chat --api-key xxx` → 静默成功；
 - 非 TTY 下 `chovy config` 不带 flag 报 CONFIG_INVALID。

@@ -8,8 +8,9 @@
 
 1. **虚拟化**：消息超过 N 条时只渲染 viewport 内的，避免 Ink 卡顿；
 2. **工具调用折叠块**：tool message 默认折叠成单行 `▶ file_read(path) → 1.2KB`，点开看细节；
-3. **assistant 消息分段**：长文本（> 3000 chars）默认折叠为 `[...展开 N 字符]`；
-4. **主题色 + i18n** 接入。
+3. **reasoning / thinking 分段**：按 Settings 的 `general.showReasoningSummaries` 展示或折叠；
+4. **assistant 消息分段**：长文本（> 3000 chars）默认折叠为 `[...展开 N 字符]`；
+5. **主题色 + i18n** 接入。
 
 ## 产物
 
@@ -52,7 +53,8 @@ PgUp/PgDn 调 scrollTop；用户开始打字 → scrollTop 跳回末尾。
 ```tsx
 interface Props { name: string; argsBrief: string; resultMeta?: { ok: boolean; bytes?: number; durMs?: number; errorCode?: string } }
 function ToolCallBlock({ name, argsBrief, resultMeta }: Props) {
-  const [open, setOpen] = useState(false);
+  const defaultOpen = name === "shell" ? loadConfig().general?.shellToolPartsExpanded : loadConfig().general?.editToolPartsExpanded;
+  const [open, setOpen] = useState(Boolean(defaultOpen));
   const theme = useTheme();
   const dot = resultMeta?.ok === false ? <Text color={theme.error}>✗</Text> : <Text color={theme.success}>✓</Text>;
   const dur = resultMeta?.durMs ? `${resultMeta.durMs}ms` : "-";
@@ -96,6 +98,23 @@ function CollapsibleText({ text }: { text: string }) {
 }
 ```
 
+### 3.1 Reasoning / thinking block
+
+```tsx
+function ReasoningBlock({ text }: { text: string }) {
+  const show = loadConfig().general?.showReasoningSummaries ?? true;
+  const [open, setOpen] = useState(show);
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>{open ? "▼ " : "▶ "}{t("msg.reasoning.summary")}</Text>
+      {open ? <Text dimColor>{text}</Text> : null}
+    </Box>
+  );
+}
+```
+
+`/thinking` 和 Ctrl+P `message.toggleThinking` 修改同一 config 字段；Settings、slash、palette 三入口行为一致。
+
 ### 4. MessageRow
 
 ```tsx
@@ -132,6 +151,7 @@ function MessageRow({ msg }: { msg: UIMessage }) {
 
 - `UIMessage` 既有字段不动（id/role/content/pending/interrupted）；
 - 折叠阈值常量写死（FOLD_THRESHOLD=3000、VISIBLE_CAP=30），不进 config；
+- reasoning/tool 默认展开状态来自 SettingsField 写入的 config，运行时切换立即影响新消息，旧消息保留用户手动展开状态；
 - 工具调用 meta 来自既有 `ToolResult.meta`（AGENTS.md §16 单源）；本步只解析展示，不重算；
 - 消息排序仍按到达顺序（不重排）。
 
@@ -140,6 +160,7 @@ function MessageRow({ msg }: { msg: UIMessage }) {
 - `bun run typecheck` 通过；
 - 跑 chovy 让 agent 调 5 个工具 → MessageList 显示 5 条折叠块，每块单行；
 - Tab 进焦点 + Enter 展开任意一块 → 展示完整 args / errorCode；
+- `/thinking` 或 Settings 关闭 reasoning summaries → 新 reasoning block 默认折叠；
 - 让 assistant 输出 > 3000 字符 → 自动折叠 + 展开提示；
 - 100 条消息 + 第 100 条流式 token → 不卡顿（视觉 60fps 接近）；
 - `scripts/smoke-step54.ts`：mock messages.length=100 → 渲染只 mount 30 个 MessageRow（spy）。

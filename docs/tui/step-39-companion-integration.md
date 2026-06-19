@@ -1,11 +1,11 @@
 # Step 39 — Companion 集成主屏 + speech bubble
 
-**Phase**: K | **依赖**: 38 | **可并行**: 41, 45 | **估时**: 3h
+**Phase**: K | **依赖**: 38 | **可并行**: 42, 43, 49, 50, 51 | **估时**: 3h
 
 ## 目标
 
-把 `<CompanionHost/>` 真正挂到 REPL 主屏。InputBox 旁边显示吉祥物 + 偶尔冒一句 speech bubble。
-窄终端（< 100 cols）退化成单行 face + quip。
+把 `<CompanionHost/>` 真正挂到 REPL 主屏。InputBox 旁边显示小尺寸原色吉祥物 + 偶尔冒一句 speech bubble。
+窄终端（< 60 cols）退化成单行 face + quip；中等宽度（60..99 cols）显示 16 列 compact GIF。
 
 ## 产物
 
@@ -45,17 +45,24 @@ export function CompanionHost({ cwd, reservedCols }: Props): React.ReactElement 
 
   if (muted || process.env["CHOVY_NO_COMPANION"] === "1") return null;
   if (caps.cols < 60) return <NarrowFace state={state} reaction={reaction} />;
+  const cols = caps.cols < 100 ? 16 : Math.min(reservedCols ?? 20, 22);
   const gifPath = resolveGifPath(state, skin, cwd);
   return (
     <Box flexDirection="row" alignItems="flex-end" paddingX={1} flexShrink={0}>
       {reaction ? <SpeechBubble text={reaction} state={state}/> : null}
-      <CompanionPlayer gifPath={gifPath} active cols={Math.min(reservedCols ?? 24, 28)} />
+      <CompanionPlayer gifPath={gifPath} active cols={cols} />
     </Box>
   );
 }
 ```
 
-`MIN_COLS_FOR_FULL_GIF = 100`：与 cc-haha 同阈值（终端经验值）；< 100 cols 走 NarrowFace。
+`MIN_COLS_FOR_COMPACT_GIF = 60`，`MIN_COLS_FOR_FULL_GIF = 100`：
+
+- `<60` cols：走 NarrowFace，完全不解 GIF；
+- `60..99` cols：显示 16 列 compact GIF；
+- `>=100` cols：显示 20–22 列 small GIF。
+
+吉祥物是辅助反馈，不允许默认占到 24 列以上；用户显式设置 size 也受 step-36 的 28 列硬上限约束。
 
 ### 2. SpeechBubble — chovy-code 风格
 
@@ -165,12 +172,13 @@ function NarrowFace({ state, reaction }: { state: CompanionState; reaction?: str
 - CompanionHost 是 React 组件**纯 UI**：所有 mutation（state / skin / mute）走 handle 或 stateMachine 单例，**不**直接 setState。
 - 气泡 fade 时长 8s 写常量，不进 config。
 - < 60 cols 强制 NarrowFace；用户**不能**关此降级（保证窄终端可用）。
+- theme 只影响 SpeechBubble / NarrowFace 文本，不影响 GIF 像素颜色。
 
 ## 验收标准
 
 - `bun run typecheck` 通过；
 - 运行 `chovy chat` → 看到吉祥物 + 偶尔冒泡（`done` 状态）；
-- resize 终端到 50 cols → 立即变 NarrowFace；resize 回 120 cols → 恢复完整 GIF；
+- resize 终端到 50 cols → 立即变 NarrowFace；resize 到 80 cols → 16 列 compact GIF；resize 回 120 cols → 20–22 列 small GIF；
 - `Ctrl+C` 退出 → 无残留 setTimeout / setInterval（用 leaked-handles 工具或手测）；
 - `CHOVY_NO_COMPANION=1` → 完全不显示，不解 GIF；
 - `scripts/smoke-step39.ts`：mount + 立即 dispose → 资源全部释放（state machine + cache loader）。

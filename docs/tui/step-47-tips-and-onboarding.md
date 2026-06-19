@@ -125,7 +125,7 @@ if (s.lastSeenVersion !== currentVersion) {
 ```
 
 > 不主动弹 release-notes（避免打扰）；只在 dynamicTips 第一条标 `✨ 已从 vX 升级到 vY，运行 /release-notes`。
-> `/release-notes` 命令本身在 step-44 注册时已通过 slashBridge 同步进 palette。
+> `/release-notes` 命令本身在 step-44 通过 `cli/commandSources.ts` 进入 command store，并同步出 Ctrl+P 与 `/` 两个入口。
 
 ### 5. tips.ts 静态兜底
 

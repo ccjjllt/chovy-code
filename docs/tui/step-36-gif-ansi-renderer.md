@@ -1,11 +1,11 @@
 # Step 36 — GIF 解码 + ANSI 半块渲染核心
 
-**Phase**: K | **依赖**: B8 (J 屏障) | **可并行**: 41, 45, 48 | **估时**: 4h | **创新**: BUDDY-GIF
+**Phase**: K | **依赖**: B8 (J 屏障) | **可并行**: 41, 46, 48, 53, 54, 55 | **估时**: 4h | **创新**: BUDDY-GIF
 
 ## 目标
 
 把 `gif/2026-06-12_*.GIF` 5 个真 GIF **本地**解码成 ARGB 帧序列 → 用 ▀▄ 半块字符 + ANSI 24-bit 真彩色渲染成
-可直接 `console.write` 的字符串。无网络副作用，无外部 ImageMagick / ffmpeg 调用。
+可直接 `console.write` 的字符串。无网络副作用，无外部 ImageMagick / ffmpeg 调用，**不做主题调色，保持 GIF 原始颜色**。
 
 > 算法严格参考 `gif/Terminal-GIF-Player-main/play-gif.ps1` line 226-365（解码 + 预渲染部分）。
 
@@ -26,8 +26,7 @@ src/companion/
 
 ### 1. 是否引依赖？
 
-**优先自实现**（≤ 600 行总代码，无依赖）；若 PR 评审认为代价过大，**可**引 `omggif`（≈ 12KB，纯 JS，无 native binding）——
-PR 描述里**显式**说明（AGENTS.md §8 要求）。本 spec 默认走自实现路径。
+**自实现**（≤ 600 行总代码，无依赖）。本阶段红线是不新增 npm 依赖；如果未来确实要引库，必须先改本 step 风险段和 PR 说明，不能在实现里临时加。
 
 ### 2. ARGB 帧结构
 
@@ -116,7 +115,7 @@ export function frameToAnsi(frame: ARGBFrame, opts: RenderOpts): string {
 function scaleNearest(src: Uint8Array, sw: number, sh: number, targetCols: number): { width: number; height: number; data: Uint8Array } {
   // 终端字符宽 ≈ 像素 × 1；半块字符意味着每 2 行像素 = 1 行字符
   // 因此「字符列数 = targetCols」对应「像素宽 = targetCols」
-  const newW = targetCols;
+  const newW = clamp(targetCols, 8, 28);
   let newH = Math.round(sh * (newW / sw));
   if (newH % 2 !== 0) newH++;                   // 偶数化
   // nearest-neighbor 缩放
@@ -141,7 +140,8 @@ function scaleNearest(src: Uint8Array, sw: number, sh: number, targetCols: numbe
 - `ARGBFrame` / `GifMeta` 字段冻结（B9 屏障）；扩展只追加可选字段。
 - `decodeGif()` 必须接受 `parentSignal`，**本地 AbortController 包装**（AGENTS.md §9）。
 - ANSI 字符串**纯 ASCII + 半块字符**，不引入终端依赖逃逸序列（如 OSC、DECSET）；调用方负责光标定位。
-- targetCols ≤ 80 默认；超过 120 抛 warn（吉祥物变得太大不美观）。
+- 颜色只来自 GIF 帧像素；透明像素按 GIF background / 透明规则合成，不接收 theme token。
+- 默认 `targetCols=20`；主屏推荐 18–22，欢迎页最大 20；`targetCols > 24` 必须是显式用户偏好，`targetCols > 28` 直接拒绝。
 
 ## 验收标准
 
@@ -155,5 +155,5 @@ function scaleNearest(src: Uint8Array, sw: number, sh: number, targetCols: numbe
 ## 风险
 
 - **GIF89a disposal method**：处理不当导致前后帧串色；smoke fixture 至少包含一个用 disposal=2（restore-bg）的 GIF。
-- **LZW 实现**：自实现易出 off-by-one；step-36 spec 推荐**先**用 `omggif` 跑通流程（PR 注释）后**再**尝试自实现。如评审认为延迟 K 阶段不划算，可保留 `omggif`（明确写在 KNOWN-LIMITATIONS）。
+- **LZW 实现**：自实现易出 off-by-one；用固定 5 个 GIF 加最小 fixture 做单元基线，不通过时不得引第三方库绕过。
 - **真彩色降级**：16-color 模式下吉祥物会非常失真；建议保留默认 trueColor=true，并在 detectTerminal 不支持时直接走 ASCII fallback（step-37 处理）。

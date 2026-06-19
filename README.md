@@ -13,6 +13,17 @@ It can run one-shot prompts, open an interactive REPL, call tools, spawn sub-age
 | SCW | Monitors context pressure and rebuilds from structured snapshots. | `bun run bench:context-rebuild` |
 | CSG | Plans the smallest useful skill graph instead of dumping every skill. | `bun src/cli/index.tsx skill list` |
 
+## TUI Phase J-P Plan
+
+The next TUI roadmap is documented in [`docs/tui/README.md`](docs/tui/README.md). It upgrades the Ink REPL with a small original-color GIF companion, Ctrl+P command palette, purple-dominant blue-accent theme, MiMo-style zh/en i18n, and Settings.
+
+Planning gates:
+
+- Command/slash coverage targets at least 72 cc-haha-equivalent user-visible commands.
+- Bundled skills target at least 15 CSG skills while preserving `requires` / `provides` / `conflicts`.
+- Coverage reports must include `byGroup` / `bySource` / `nonCounted`; hidden, disabled, TODO, and backend-missing entries do not count.
+- Full command and skill coverage matrix: [`docs/tui/command-skill-coverage.md`](docs/tui/command-skill-coverage.md).
+
 ## Quick Start
 
 ```bash

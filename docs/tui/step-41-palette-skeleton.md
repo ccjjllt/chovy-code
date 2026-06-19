@@ -7,6 +7,8 @@
 `Ctrl+P` 打开命令面板 overlay。面板布局 = 标题 + 搜索框 + 分组列表 + 快捷键列。Esc 关闭。
 本步只做**骨架与焦点**，搜索逻辑在 step-42、命令注册在 step-43、集成在 step-44。
 
+重要边界：step-41 的任何 sample / placeholder command **不得**计入 `commandEquivalents`。本步验收只证明 cc-haha 式高密度操作容器已经能打开、聚焦、滚动、关闭；命令丰富度必须等 step-43/44 与 `command-skill-coverage.md` 验收。
+
 ## 产物
 
 ```
@@ -49,7 +51,7 @@ export function CommandPalette({ ctx }: { ctx: ReplCtx }) {
   if (!open) return null;
   if (process.env["CHOVY_NO_PALETTE"] === "1") return <InlinePaletteFallback ctx={ctx}/>;
 
-  // 拿 step-43 注册中心 + step-42 模糊搜索（本步先返回空数组占位）
+  // 拿 step-43 注册中心 + step-42 模糊搜索（本步只允许 sample data，不计入覆盖）
   const grouped = useMemo(() => groupAndFilter(getCommands(ctx), query), [query]);
   const flat = useMemo(() => flatten(grouped), [grouped]);
 
@@ -89,13 +91,13 @@ export function PaletteHeader() {
   return (
     <Box justifyContent="space-between" marginBottom={1}>
       <Text bold color={theme.primary}>{t("palette.title")}</Text>
-      <Text dimColor>esc</Text>
+      <Text dimColor>{t("palette.scope.commands")}</Text>
     </Box>
   );
 }
 ```
 
-匹配图 4 视觉：标题左、esc 右。
+标题只放标题与范围提示；Esc / Enter / ↑↓ 等键位提示统一放 footer hotkey bar，避免照搬 MiMo 的标题右上 Esc 布局。
 
 ### 4. PaletteInput
 
@@ -116,10 +118,10 @@ export function PaletteInput({ value, onChange }: { value: string; onChange: (v:
 
 `SimpleInput` 是个 ~60 行的最小受控输入（不复用 InputBox，避免 history / 多行复杂度）。
 
-### 5. PaletteList + Row（本步占位）
+### 5. PaletteList + Row（本步 sample 数据）
 
 ```tsx
-// 占位实现：直接展示 grouped；step-43 注册命令后才有真实数据
+// sample 实现：直接展示 grouped；step-43 注册命令后才有真实数据
 export function PaletteList({ grouped, selectedIndex }: { grouped: Group[]; selectedIndex: number }) {
   const theme = useTheme();
   let cursor = 0;
@@ -156,6 +158,17 @@ export function PaletteRow({ item, selected }: { item: PaletteCommand; selected:
 
 `inverse=selected` 实现高亮；step-42 会在 label 上叠加搜索匹配高亮。
 
+### 6.1 cc-haha 式操作密度，但不复刻 UI
+
+本步的视觉/操作骨架要接近 cc-haha 的“命令很多但仍可扫读”的密度，而不是做稀疏欢迎页：
+
+- 行高保持 1 行；单条命令只显示 label + 可选描述 hint + hotkey，不使用卡片。
+- 分组标题短、可折叠空间小；空 query 先推荐 / MRU，再按 group 展开。
+- hotkey 右对齐，disabled 原因在描述位显示，不弹二级说明页。
+- footer 统一显示 `↑↓` / `Enter` / `Esc` / `Tab`，不把快捷键提示散落到标题右上。
+- 面板最大 80 列、24 行；窄屏走 inline fallback，不全屏 takeover。
+- 颜色使用 ChovyDefault 紫色主高亮、蓝色辅助焦点；不复制 MiMo 橙色，也不复制 cc-haha 的边框和 buddy 视觉。
+
 ### 7. 全局集成（minimal）
 
 ```tsx
@@ -185,6 +198,7 @@ useKeybinding("palette.open", () => openPalette(), { isActive: !busy });
 - ↑↓ 高亮在分组间正确切换；查询为空时 flat=全部命令；
 - `CHOVY_NO_PALETTE=1` → 启动 chovy + Ctrl+P → 显示 inline fallback；
 - `scripts/smoke-step41.ts`：openPalette() → state.open=true，setPaletteQuery("a") → query 同步，closePalette → 全部归零。
+- `scripts/smoke-step41.ts` 不输出也不校验 `commandEquivalents`；如需要 sample command，只能标记 `source="sample"` 并在 step-43 前删除或隐藏。
 
 ## 风险
 

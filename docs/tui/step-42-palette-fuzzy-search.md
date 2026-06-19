@@ -39,8 +39,8 @@ export function scoreMatch(label: string, query: string, locale: Locale): MatchR
 
 1. **完全子串**：`label.toLowerCase().includes(query.toLowerCase())` → 高分（base 100）+ 子串靠前加 bonus；
 2. **fuzzy 字符顺序**：query 字符按顺序在 label 出现 → 中分（base 50）+ 紧凑度 bonus（连续命中 +5）；
-3. **拼音首字母**（locale=zh-CN 时）：把 label 的中文段抽出 → 取首字母 → 与 query 做 fuzzy → 中分（base 40）；
-4. **trigram**：locale=zh-CN，query 长度 ≥ 2 时，按 2-gram / 3-gram 切片重叠匹配 → 低-中分（base 30）。
+3. **拼音首字母**（locale=`zh` 时）：把 label 的中文段抽出 → 取首字母 → 与 query 做 fuzzy → 中分（base 40）；
+4. **trigram**：locale=`zh`，query 长度 ≥ 2 时，按 2-gram / 3-gram 切片重叠匹配 → 低-中分（base 30）。
 
 最终 score 取以上四策略的 max。低于 0 视为不匹配。
 
@@ -49,8 +49,8 @@ export function scoreMatch(label: string, query: string, locale: Locale): MatchR
   if (!query) return { score: 1, positions: [] };
   const a = scoreSubstring(label, query);
   const b = scoreFuzzy(label, query);
-  const c = locale === "zh-CN" ? scorePinyinInitials(label, query) : { score: -1, positions: [] };
-  const d = locale === "zh-CN" && query.length >= 2 ? scoreTrigram(label, query) : { score: -1, positions: [] };
+  const c = locale === "zh" ? scorePinyinInitials(label, query) : { score: -1, positions: [] };
+  const d = locale === "zh" && query.length >= 2 ? scoreTrigram(label, query) : { score: -1, positions: [] };
   return [a, b, c, d].reduce((best, cur) => cur.score > best.score ? cur : best);
 }
 ```
@@ -137,23 +137,23 @@ export function filterAndSort(commands: PaletteCommand[], query: string, locale:
 }
 ```
 
-50 项硬上限：避免大量命令时 React 渲染卡顿；用户可继续输入精确化。
+搜索结果展示 50 项上限：避免大量命令时 React 渲染卡顿；registry 不截断，用户可继续输入精确化。
 
 ## 接口冻结 / 不变量
 
 - `MatchResult.positions` 是**字符索引**（不是字节），与 string 的 codePoint 迭代一致；
 - `scoreMatch` 单源 = `src/palette/search.ts`；其它模块**不**重新实现匹配逻辑；
-- 拼音首字母仅在 `getLocale() === "zh-CN"` 时启用——避免 en-US 用户输入 "qhm" 看到无关项；
+- 拼音首字母仅在 `getLocale() === "zh"` 时启用——避免英文用户输入 "qhm" 看到无关项；
 - debounce 80ms 写常量，不进 config。
 
 ## 验收标准
 
 - `bun run typecheck` 通过；
 - 单元（`scripts/smoke-step42.ts`）：
-  - `scoreMatch("Switch Model", "swm", "en-US").score > 0`；positions 包含 0, 7（S 与 M 索引）；
-  - `scoreMatch("切换模型", "qhmx", "zh-CN").score > 0`；
-  - `scoreMatch("切换会话", "切换", "zh-CN").score > 0`；
-  - `scoreMatch("打开编辑器", "qq", "zh-CN").score < 0`；
+  - `scoreMatch("Switch Model", "swm", "en").score > 0`；positions 包含 0, 7（S 与 M 索引）；
+  - `scoreMatch("切换模型", "qhmx", "zh").score > 0`；
+  - `scoreMatch("切换会话", "切换", "zh").score > 0`；
+  - `scoreMatch("打开编辑器", "qq", "zh").score < 0`；
 - 跑 chovy → Ctrl+P 输入 "切" → 列表过滤到含 "切" 的项；命中字符高亮蓝色；
 - 输入 200 char 长 query 不卡顿（< 50ms 一次过滤）。
 

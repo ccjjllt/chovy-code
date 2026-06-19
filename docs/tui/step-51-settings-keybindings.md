@@ -113,16 +113,18 @@ function HotkeyEditor({ bindingId, onCommit, onCancel, onClear }: Props) {
 ```
 
 但**不是**每个 binding 单独 register；KeybindPanel 直接调 setUserBinding（不走 dirty/commit），原因：
-hotkey 录制是**即时**的（用户按下即录），与 toggle/select 节奏不同。
+hotkey 录制是**即时**的（用户确认即录），与 toggle/select 节奏不同。
 
 ```ts
 function commitHotkey(bindingId: string, captured: string) {
+  const conflict = findConflict(bindingId, captured);
+  if (conflict) { showConflictToast(conflict); return; }
   setUserBinding(bindingId, captured);          // 立即写盘 + 重算冲突
   // 不需进 settings.dirty —— 已 persist
 }
 ```
 
-冲突 emit 一次 telemetry warn，但**不**阻止 commit（用户自己负责）。
+对齐 MiMo：冲突会 toast 并阻止 commit，用户必须先清除旧绑定或选择其它键位。
 
 ### 5. 恢复默认 / 清除
 
@@ -155,7 +157,8 @@ function ConflictsList() {
 - `setUserBinding(id, value | null)` 是单源 mutation（与 step-34 一致）；UI 不直写 config.json keybindings；
 - 清除（null）可以让 binding 完全失效（hook handler 不触发）；
 - 录制按键时**只**接受 modifier+letter 组合或单 key（Tab/Enter/Esc/Function 键）；不允许录纯字符（避免 InputBox 失效）；
-- 冲突告警**不**阻止保存（用户在专家模式可故意冲突，但 UI 红字提醒）。
+- 冲突默认阻止保存并 toast 说明；只有用户清除冲突后才能写入 config。
+- keybindings 分组对齐 MiMo：General / Session / Navigation / Model & Provider / Prompt / Message / Panels / Companion / Advanced，分组标题走 i18n。
 
 ## 验收标准
 
@@ -163,8 +166,8 @@ function ConflictsList() {
 - 设置 → Keybindings → 列出 ≥ 20 项；
 - 选中 palette.open → Enter 进入录制 → 按 `Ctrl+Shift+P` → confirmed → 列表显示 modified；重启后仍 modified；
 - 录制时按 Backspace → 清除 binding → 列表显示 `(empty)`；Ctrl+P 不再触发 palette；
-- 故意把 buddy.pet 改成 Ctrl+P → ConflictsList 出现红色 `Ctrl+P: palette.open + buddy.pet`；
-- `scripts/smoke-step51.ts`：setUserBinding + 读 config.json 含覆盖；setUserBinding(id, null) + 读 → 字段为 null。
+- 故意把 buddy.pet 改成 Ctrl+P → toast 冲突，config 不写入；ConflictsList 仅显示历史遗留冲突；
+- `scripts/smoke-step51.ts`：setUserBinding + 读 config.json 含覆盖；setUserBinding(id, null) + 读 → 字段为 null；冲突录制不会写入 config。
 
 ## 风险
 

@@ -4,7 +4,7 @@
 
 ## 目标
 
-把所有 TUI 颜色 / 边框 / spinner 字符**集中到一个主题对象**里。默认 `ChovyDefault`（紫 #8B5CF6 + 蓝 #3B82F6），
+把所有 TUI 颜色 / 边框 / spinner 字符**集中到一个主题对象**里。默认 `ChovyDefault`（紫 #7C3AED 主导 + 蓝 #3B82F6 辅助），
 4 个内置备选；用户可在 `config.json` 加 `theme.custom` 深合并字段；运行时 `/theme set <name>` 切换。
 
 ## 产物
@@ -17,7 +17,7 @@ src/theme/
 ├── persist.ts        # 写 config.json 的 theme 段
 └── inkColor.ts       # hex → Ink color name 16-color fallback
 
-src/cli/slashCommands/theme.ts   # /theme list|set|create
+src/cli/slashCommands/theme.ts   # /theme list|set|custom|reset|create
 ```
 
 ## 实现要点
@@ -38,7 +38,7 @@ export interface Theme {
 }
 export const ChovyDefault: Theme = {
   name: "ChovyDefault",
-  primary: "#8B5CF6", accent: "#3B82F6",
+  primary: "#7C3AED", accent: "#3B82F6",
   bg: "default", fg: "#E5E7EB", muted: "#6B7280",
   success: "#10B981", warning: "#F59E0B", error: "#EF4444",
   borderStyle: "round",
@@ -86,7 +86,7 @@ export function inkColor(hex: string, supportTrueColor: boolean): string {
 {
   "theme": {
     "name": "ChovyDefault",
-    "custom": { "primary": "#FF6699" }
+    "custom": { "primary": "#A855F7", "accent": "#38BDF8" }
   }
 }
 ```
@@ -98,6 +98,8 @@ export function inkColor(hex: string, supportTrueColor: boolean): string {
 ```
 /theme list                          → 列 5 个内置 + 当前
 /theme set ChovyHighContrast         → 切换 + 持久化
+/theme custom primary=#A855F7 accent=#38BDF8  → 写 config.theme.custom 并立即重算
+/theme reset                         → 清空 config.theme.custom，回到内置默认
 /theme create my-theme primary=#fff  → 在 config.json 写一份新名字 + custom
 ```
 
@@ -106,6 +108,8 @@ export function inkColor(hex: string, supportTrueColor: boolean): string {
 - `Theme.name` / `primary` / `accent` 等字段冻结（B8）；扩展只追加可选字段。
 - 持久化字段 `config.theme.name` / `config.theme.custom`（zod schema 在 step-02 既有 ChovyConfig 上**追加**可选字段）。
 - `tui.theme.change` telemetry 单源 = `setTheme()`；其它模块**不**直发。
+- `primary` 是默认主视觉色，应用于标题、选中、主边框；`accent` 只用于次级焦点 / action，确保默认观感“紫多蓝少”。
+- 主题 token **不得**用于 GIF 像素调色；吉祥物保持原图颜色。
 
 ## 验收标准
 

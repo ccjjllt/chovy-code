@@ -111,7 +111,7 @@ interface ListProps<T> {
 <HotkeyHint k="Ctrl+Shift+L" />    →   "Ctrl+Shift+L"
 ```
 
-i18n 把 modifier 名字本地化：zh-CN 下 `Ctrl` 仍是 "Ctrl"（保留约定俗成），不译；只有 `Esc` / `Enter` 等会替换为「ESC / 回车」。i18n key：`hotkey.modifier.ctrl` 等，默认 zh-CN 保持原文。
+i18n 把 modifier 名字本地化：locale=`zh` 下 `Ctrl` 仍是 "Ctrl"（保留约定俗成），不译；只有 `Esc` / `Enter` 等会替换为「ESC / 回车」。i18n key：`hotkey.modifier.ctrl` 等，默认中文保持原文。
 
 ## 接口冻结 / 不变量
 

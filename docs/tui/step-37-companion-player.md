@@ -80,16 +80,17 @@ export async function loadFramesCached(gifPath: string, targetCols: number, sign
 interface CompanionPlayerProps {
   gifPath: string;                     // 当前状态对应的 GIF
   active: boolean;                     // 暂停 / 隐藏（脱焦时停止帧切换省 CPU）
-  cols: number;                        // 渲染宽度
+  cols: number;                        // 渲染宽度，默认 20，硬上限 28
   onReady?: () => void;
 }
 export function CompanionPlayer({ gifPath, active, cols, onReady }: CompanionPlayerProps) {
+  const targetCols = normalizeCompanionCols(cols);  // clamp 8..28，默认 20
   const [frames, setFrames] = useState<{ ansi: string; delayMs: number }[] | null>(null);
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {
     const ac = new AbortController();
-    loadFramesCached(gifPath, cols, ac.signal).then(r => {
+    loadFramesCached(gifPath, targetCols, ac.signal).then(r => {
       setFrames(r.frames); setIdx(0); onReady?.();
     }).catch(err => {
       if (ac.signal.aborted) return;
@@ -97,7 +98,7 @@ export function CompanionPlayer({ gifPath, active, cols, onReady }: CompanionPla
       // 静默降级到 ASCII fallback：调用方观察 frames=null + setError
     });
     return () => ac.abort();
-  }, [gifPath, cols]);
+  }, [gifPath, targetCols]);
 
   useEffect(() => {
     if (!active || !frames || frames.length === 0) return;
@@ -126,7 +127,7 @@ export const FALLBACKS: Record<CompanionState, string[]> = {
 };
 ```
 
-`AsciiFallback` 组件按 500ms 切帧；`CHOVY_NO_COMPANION=1` 也走它（只显示首帧）。
+`AsciiFallback` 组件按 500ms 切帧；`CHOVY_NO_COMPANION=1` 是总关闭开关，直接不挂载 CompanionHost，不走 fallback。
 
 ## 接口冻结 / 不变量
 
@@ -134,6 +135,9 @@ export const FALLBACKS: Record<CompanionState, string[]> = {
 - `loadFramesCached` 失败必须返回**降级**结果或抛——**不**让 player 一直空白阻塞 UI。
 - 帧切换 `setTimeout` 必须在 `useEffect` cleanup 内 `clearTimeout`，组件卸载零泄漏。
 - `active=false` 时**不**跑帧切换 setTimeout（CPU 0%）。
+- 帧缓存 key 必须包含 `targetCols`；不同尺寸 ANSI 缓存不能混用。
+- `<CompanionPlayer/>` 不接受 theme 颜色参数，GIF 像素保持原色；边框 / 气泡由宿主组件单独使用 theme。
+- 默认展示小尺寸：主屏 18–22 列，欢迎页 ≤20 列，硬上限 28 列。
 
 ## 验收标准
 
@@ -141,7 +145,7 @@ export const FALLBACKS: Record<CompanionState, string[]> = {
 - `scripts/smoke-step37.ts`：第一次 loadFramesCached → 写盘；第二次 < 50ms 命中缓存（diff timestamp）；
 - 跑 chovy → 吉祥物 1s 内出现且会动；按 Ctrl+C 退出无未释放定时器；
 - 改 `gif/*.GIF` 文件 → cache 失效，重解码；
-- `CHOVY_NO_COMPANION=1` 启动 → 显示 ASCII fallback，不解码 GIF。
+- `CHOVY_NO_COMPANION=1` 启动 → 不显示吉祥物，不解码 GIF；低色 / 无 Unicode 终端才显示 ASCII fallback。
 
 ## 风险
 

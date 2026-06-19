@@ -8,6 +8,7 @@
 
 - `Ctrl+B` / `/buddy pet` → 摸一下吉祥物，触发爱心动画 2.5s；
 - `/buddy mute` / `/buddy unmute` → 静音 / 取消；
+- `/buddy show` / `/buddy hide`、`/buddy size compact|small|auto` → 控制显示与小尺寸策略；
 - `/buddy skin <name>` → 切换皮肤（默认 + 用户在 `~/.chovy/skins/<name>/` 放 5 个 .gif）；
 - `/buddy stats` → 显示「你已经按了 N 次」（彩蛋）。
 
@@ -29,11 +30,19 @@ src/cli/slashCommands/buddy.ts   # registry 入口（薄壳）
 ```ts
 // src/companion/prefs.ts
 // config.json:
-//   companion: { muted: false, skin: "default", petCount: 0 }
-export interface CompanionPrefs { muted: boolean; skin: string; petCount: number; }
+//   companion: { muted: false, visible: true, skin: "default", size: "auto", petCount: 0 }
+export interface CompanionPrefs {
+  muted: boolean;
+  visible: boolean;
+  skin: string;
+  size: "auto" | "compact" | "small";
+  petCount: number;
+}
 export function getPrefs(): CompanionPrefs;
 export function setMuted(b: boolean): void;
+export function setVisible(b: boolean): void;
 export function setSkin(name: string): void;
+export function setSize(size: CompanionPrefs["size"]): void;
 export function incPetCount(): number;     // 返回新值
 ```
 
@@ -76,7 +85,10 @@ CompanionHost 在 `companionBus` 收到 `{type:"pet"}` 时挂 `<PetHearts/>` 在
 ```ts
 // /buddy                      → 显示帮助 + stats
 // /buddy pet                   → 触发爱心
+// /buddy show / hide            → 显示 / 隐藏吉祥物
 // /buddy mute / unmute         → 静音切换
+// /buddy size                   → 显示当前尺寸策略
+// /buddy size auto|compact|small→ 切换尺寸策略（仍受 28 列硬上限）
 // /buddy skin                  → 列出可用皮肤
 // /buddy skin <name>           → 切换
 // /buddy skin reset            → 回 default
@@ -86,8 +98,11 @@ export const buddyHandler: SlashHandler = async (args, ctx) => {
   const sub = args.split(/\s+/)[0] ?? "";
   if (!sub) return ctx.appendSystem(t("companion.slash.help"));
   if (sub === "pet")   return doPet(ctx);
+  if (sub === "show")  return doVisible(ctx, true);
+  if (sub === "hide")  return doVisible(ctx, false);
   if (sub === "mute")  return doMute(ctx, true);
   if (sub === "unmute")return doMute(ctx, false);
+  if (sub === "size")  return doSize(args.slice("size".length).trim(), ctx);
   if (sub === "skin")  return doSkin(args.slice("skin".length).trim(), ctx);
   if (sub === "stats") return doStats(ctx);
   ctx.appendSystem(`未知子命令：${sub}`);
@@ -115,7 +130,7 @@ export const buddyHandler: SlashHandler = async (args, ctx) => {
 ### 5. 彩蛋（克制）
 
 - `petCount > 100` → 偶尔冒一句「我快被摸秃了…」（i18n key）；
-- `petCount > 500` → 解锁隐藏 quip 集（独立 key 集合，从 zh-CN/en-US 字典加载）；
+- `petCount > 500` → 解锁隐藏 quip 集（独立 key 集合，从 zh/en 字典加载）；
 - Easter egg 不影响功能，纯文本，**不**改 GIF。
 
 ### 6. Ctrl+B 集成
@@ -135,12 +150,17 @@ useKeybinding("buddy.pet", () => {
 - 写盘单源 = `setMuted/setSkin/incPetCount`，**不**绕过去直写 config.json。
 - pet 动画时长 2.5s 写常量；与吉祥物 state 切换是**正交**的（pet 时 state 不变）。
 - 皮肤验证失败 → 不切换 + telemetry warn + i18n 错误提示，**不抛**。
+- `visible=false` 是用户偏好；`CHOVY_NO_COMPANION=1` 是更高优先级 env 兜底，不写入 config。
+- `size` 只允许 `auto|compact|small`，不得暴露任意列数，避免吉祥物过大。
+- 禁止加入 hatch / release / rarity / stat name 等 cc-haha buddy 机制。
 
 ## 验收标准
 
 - `bun run typecheck` 通过；
 - 运行 chovy → `Ctrl+B` 触发爱心，2.5s 消失；
 - `/buddy mute` → 吉祥物消失；`/buddy unmute` → 恢复；
+- `/buddy hide` → 吉祥物消失但不影响 muted；`/buddy show` → 恢复；
+- `/buddy size compact` → 主屏使用 14–16 列 compact GIF；重启保持；
 - `/buddy skin` 列出至少 `default`；
 - `/buddy stats` 显示 petCount；连按 Ctrl+B 100 次后再 `stats` 显示 100；
 - 重启 chovy → petCount 跨会话保持。

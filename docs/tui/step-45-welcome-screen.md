@@ -73,7 +73,7 @@ function WelcomeMascotColumn({ provider, model, mode, cwd }: Props): React.React
     <Box flexDirection="column" alignItems="center" paddingY={1}>
       <Text bold>{t("welcome.greet")}</Text>
       <Box marginTop={1} marginBottom={1}>
-        <CompanionPlayer gifPath={resolveGifPath("idle", "default", cwd)} active cols={20}/>
+        <CompanionPlayer gifPath={resolveGifPath("idle", "default", cwd)} active cols={18}/>
       </Box>
       <Text dimColor>{`${provider}/${model} · ${mode}`}</Text>
       <Text dimColor>{shortCwd(cwd, 40)}</Text>
@@ -117,7 +117,7 @@ function WelcomeNarrow(props: Props): React.ReactElement {
     <Box flexDirection="column" borderStyle="round" borderColor={theme.primary}>
       <Text bold>{t("welcome.greet")}</Text>
       <CompanionPlayer gifPath={resolveGifPath("idle", "default", props.cwd)} active
-                       cols={Math.min(caps.cols - 4, 30)} />
+                       cols={Math.min(caps.cols - 4, 20)} />
       <Text dimColor>{props.model}</Text>
       <Text dimColor>{t("welcome.tips.palette")}</Text>
     </Box>
@@ -147,6 +147,7 @@ useEffect(() => {
 
 Welcome 内的 GIF 与 CompanionHost 的 GIF 解码缓存共享（step-37 hash 化），但 setInterval 各自管理。
 Welcome dismiss 后该 player unmount + 释放 timer。
+Welcome 只使用 GIF 原始颜色；theme 只控制外框、标题、Tips 色彩，不对 GIF 调色。GIF 最大 20 列，避免首屏挤压输入区。
 
 ## 接口冻结 / 不变量
 
@@ -154,6 +155,7 @@ Welcome dismiss 后该 player unmount + 释放 timer。
 - WelcomeScreen 高度上限 = `caps.rows / 2`，超出截断 tips。
 - Welcome 期间用户已可输入（InputBox 仍 mount，焦点保持），第一次提交即 dismiss。
 - WelcomeScreen 不引入新 hook 订阅 telemetry / fs；纯展示。
+- `CHOVY_NO_COMPANION=1` 时 Welcome 不显示 GIF 区，Tips 区扩展到可用宽度。
 
 ## 验收标准
 

@@ -6,7 +6,7 @@
 
 把所有 TUI 快捷键集中到一处管理。提供：
 
-- 默认键位表（`Ctrl+P` 命令面板 / `Ctrl+,` 设置 / `Ctrl+L` 切换语言 / `Tab` 焦点环 / ...）；
+- 默认键位表（`Ctrl+P` 命令面板 / `Ctrl+,` 设置 / `Ctrl+L` 切换语言 / MiMo 式 `Ctrl+X` leader / `Tab` 焦点环 / ...）；
 - 用户在 `config.json` 覆盖；
 - `useKeybinding(id, handler)` hook；
 - 冲突检测（同 key 多 binding 警告）。
@@ -16,7 +16,7 @@
 ```
 src/keybindings/
 ├── index.ts           # KeyBinding / getBinding / registerBinding / setUserBinding
-├── defaults.ts        # 默认键位表（≥ 20 条）
+├── defaults.ts        # 默认键位表（≥ 35 条）
 ├── parse.ts           # "Ctrl+Shift+P" / "Ctrl+X L" → KeyMatcher
 ├── persist.ts         # config.json 写入 / 读取
 ├── conflict.ts        # 冲突检测（同 key 不同 id）
@@ -60,7 +60,17 @@ export const DEFAULT_BINDINGS: KeyBinding[] = [
   { id: "abort.run",        defaultKey: "Esc",          description: "中断运行",     scope: "global" },
   { id: "exit.repl",        defaultKey: "Ctrl+C",       description: "退出（按两次）", scope: "global" },
   { id: "session.switch",   defaultKey: "Ctrl+X L",     description: "切换会话",     scope: "global" },
+  { id: "session.new",      defaultKey: "Ctrl+X N",     description: "新建会话",     scope: "global" },
+  { id: "session.compact",  defaultKey: "Ctrl+X C",     description: "压缩会话",     scope: "global" },
+  { id: "session.timeline", defaultKey: "Ctrl+X G",     description: "会话时间线",   scope: "global" },
+  { id: "session.rename",   defaultKey: "Ctrl+X R",     description: "重命名会话",   scope: "global" },
   { id: "model.switch",     defaultKey: "Ctrl+X M",     description: "切换模型",     scope: "global" },
+  { id: "provider.switch",  defaultKey: "Ctrl+X P",     description: "切换服务商",   scope: "global" },
+  { id: "theme.switch",     defaultKey: "Ctrl+X T",     description: "切换主题",     scope: "global" },
+  { id: "editor.open",      defaultKey: "Ctrl+X E",     description: "打开外部编辑器", scope: "global" },
+  { id: "message.copyLast", defaultKey: "Ctrl+X Y",     description: "复制上一条回复", scope: "global" },
+  { id: "message.undo",     defaultKey: "Ctrl+X U",     description: "撤销上一轮",   scope: "global" },
+  { id: "message.redo",     defaultKey: "Ctrl+X Shift+U", description: "重做上一轮", scope: "global" },
   { id: "buddy.pet",        defaultKey: "Ctrl+B",       description: "摸吉祥物",     scope: "global" },
   { id: "panel.swarm",      defaultKey: "Ctrl+X S",     description: "聚焦 swarm",   scope: "global" },
   { id: "panel.goal",       defaultKey: "Ctrl+X G",     description: "聚焦 goal",    scope: "global" },
@@ -70,8 +80,12 @@ export const DEFAULT_BINDINGS: KeyBinding[] = [
   { id: "palette.down",     defaultKey: "Down",         description: "向下选择",     scope: "palette" },
   { id: "settings.save",    defaultKey: "Ctrl+S",       description: "保存设置",     scope: "settings" },
   { id: "settings.cancel",  defaultKey: "Esc",          description: "取消编辑",     scope: "settings" },
+  { id: "settings.search",  defaultKey: "/",            description: "搜索设置",     scope: "settings" },
+  { id: "settings.resetField", defaultKey: "Backspace", description: "恢复默认",     scope: "settings" },
 ];
 ```
+
+`Ctrl+P` / `Ctrl+,` / `Ctrl+L` 是红线键位，不因参考 MiMo/cc-haha 改名；其它 `Ctrl+X <key>` 作为 leader 体系，优先覆盖 session/model/provider/theme/editor/message 操作。
 
 ### 3. parse.ts — 字符串 → matcher
 
