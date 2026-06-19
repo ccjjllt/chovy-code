@@ -55,6 +55,12 @@ chovy log tail
 chovy config
 ```
 
+交互里用方向键移动 provider，按空格选择，然后输入 API key。默认使用该 provider 的默认模型，`permissionMode` 沿用已有配置或使用 `default`，保存后即可运行：
+
+```bash
+chovy chat "hello"
+```
+
 非交互脚本可用：
 
 ```bash

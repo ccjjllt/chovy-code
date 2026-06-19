@@ -534,7 +534,7 @@ providerCmd.command("list").description("列出已注册 provider")
 // `chovy config` — interactive provider/model/permission/key setup.
 program
   .command("config")
-  .description("交互式配置 provider / model / permissionMode / API key")
+  .description("交互式配置：空格选择 provider，然后输入 API key")
   .option("--provider <id>", "provider: openai|anthropic|gemini|deepseek|minimax|glm|kimi")
   .option("--model <id>", "model id; omit or pass an empty value to use provider default")
   .option("--permission-mode <mode>", `permission mode: ${PERMISSION_MODES.join("|")}`)

@@ -39,7 +39,7 @@ bun run build
 
 ## 配置入口
 
-`chovy config` 和 REPL `/config` 共用 `src/cli/configWizard.ts`。该向导只更新用户选择的 `provider`、`model`、`permissionMode`，保留 `swarm` / `memory` / `context` 等已有配置；API key 始终写入 `~/.chovy/secrets/<provider>`，文件内容只包含 key 本身且不追加换行。
+`chovy config` 和 REPL `/config` 共用 `src/cli/configWizard.ts`。交互路径是键盘选择式：方向键移动 provider，空格选择，然后输入 API key；model 默认使用 provider 默认值，permissionMode 沿用已有配置或使用 `default`。该向导只更新用户选择或 flag 指定的 `provider`、`model`、`permissionMode`，保留 `swarm` / `memory` / `context` 等已有配置；API key 始终写入 `~/.chovy/secrets/<provider>`，文件内容只包含 key 本身且不追加换行。
 
 非交互场景必须显式传 `--non-interactive`，否则不能等待 stdin。相关验证在 `bun run smoke` 中覆盖：
 

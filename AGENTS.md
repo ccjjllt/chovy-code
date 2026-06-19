@@ -841,6 +841,7 @@ chovy log tail                   # 看 telemetry
 
 > `chovy config` 与 REPL `/config` 是 provider/model/permission/API key 的统一交互式配置入口。
 
+- 交互路径必须保持“方向键移动 provider，空格选择，然后输入 API key”的少步骤体验；model 默认使用 provider 默认模型，permissionMode 沿用已有配置或 `default`，高级项用 CLI flags 覆盖。
 - API key **只**写入 `~/.chovy/secrets/<provider>`，文件内容只包含 key 本身且不追加换行；普通配置只写入 `~/.chovy/config.json`。
 - `config.json` 中不得写入 `apiKey` / `secret` 类字段；配置向导写入时必须清理这类历史误配字段，同时保留 `swarm` / `memory` / `context` 等已有合法配置。
 - 输出、日志、telemetry、文档示例和 smoke 失败信息都不得打印真实 key 明文；摘要只显示 `configured` / `missing`。

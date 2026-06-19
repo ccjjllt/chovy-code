@@ -1,4 +1,3 @@
-import { createInterface, type Interface as ReadlineInterface } from "node:readline/promises";
 import { stdin as defaultStdin, stdout as defaultStdout } from "node:process";
 import { join } from "node:path";
 
@@ -89,32 +88,41 @@ export async function runConfigWizard(
   let key = opts.key;
 
   if (interactive) {
-    const restoreRawMode = enterCookedMode(input);
     try {
       writeLine(output, "chovy config");
       writeLine(output, "");
       writeCurrentSummary(output, currentProvider, current);
       writeLine(output, "");
 
-      let shouldUpdateKey = key !== undefined;
-      const rl = createInterface({ input, output });
-      try {
-        provider = await askProvider(rl, output, providers, provider ?? currentProvider);
-        model = await askModel(rl, provider);
-        permissionMode = await askPermissionMode(rl, output, permissionMode ?? "default");
-        if (key === undefined) {
-          shouldUpdateKey = await askYesNo(rl, output, keyPrompt(provider), false);
-        } else {
-          writeLine(output, "API key supplied by flag; it will be stored without being displayed.");
+      if (provider === undefined) {
+        provider = await chooseProvider(input, output, providers, currentProvider);
+      } else {
+        writeLine(output, `Provider: ${provider}`);
+      }
+      model ??= current.model;
+      permissionMode ??= current.permissionMode ?? "default";
+      writeLine(output, `Model: ${model ?? getProvider(provider).info.defaultModel} (${model ? "configured" : "provider default"})`);
+      writeLine(output, `Permission mode: ${permissionMode}`);
+      writeLine(output, "");
+
+      if (key === undefined) {
+        const alreadyHasKey = hasSecret(provider);
+        while (true) {
+          key = await askSecret(
+            input,
+            output,
+            alreadyHasKey
+              ? `API key for ${provider} (Enter to keep existing): `
+              : `API key for ${provider}: `,
+          );
+          if (alreadyHasKey || key.trim().length > 0) break;
+          writeLine(output, "API key is required for first-time setup.");
         }
-      } finally {
-        rl.close();
+      } else {
+        writeLine(output, "API key supplied by flag; it will be stored without being displayed.");
       }
-      if (shouldUpdateKey && key === undefined) {
-        key = await askSecret(input, output, `API key for ${provider}: `);
-      }
-    } finally {
-      restoreRawMode();
+    } catch (err) {
+      throw err;
     }
   } else {
     provider ??= currentProvider;
@@ -231,62 +239,76 @@ function writeCurrentSummary(
   writeLine(output, `Current key: ${hasSecret(provider) ? "configured" : "missing"} (${envKeyFor(provider)} or ${join(chovySecretsDir(), provider)})`);
 }
 
-async function askProvider(
-  rl: ReadlineInterface,
+async function chooseProvider(
+  input: NodeJS.ReadStream,
   output: NodeJS.WriteStream,
   providers: readonly ProviderId[],
   fallback: ProviderId,
 ): Promise<ProviderId> {
-  writeLine(output, `Providers: ${providers.join(", ")}`);
-  while (true) {
-    const answer = (await rl.question(`Provider [${fallback}]: `)).trim();
-    const value = answer.length > 0 ? answer : fallback;
-    if (isProviderId(value)) return value;
-    writeLine(output, `Unknown provider "${value}". Choose one of: ${providers.join(", ")}`);
+  if (!input.isTTY || typeof input.setRawMode !== "function") {
+    throw new ChovyError(
+      "CONFIG_INVALID",
+      "cannot read provider selection from this terminal; use --non-interactive --provider.",
+    );
   }
-}
 
-async function askModel(
-  rl: ReadlineInterface,
-  provider: ProviderId,
-): Promise<string> {
-  const defaultModel = getProvider(provider).info.defaultModel;
-  const answer = await rl.question(`Model (Enter for provider default: ${defaultModel}): `);
-  return answer.trim();
-}
+  let index = Math.max(0, providers.indexOf(fallback));
+  const wasRaw = Boolean((input as { isRaw?: boolean }).isRaw);
+  input.setRawMode(true);
+  input.resume();
 
-async function askPermissionMode(
-  rl: ReadlineInterface,
-  output: NodeJS.WriteStream,
-  fallback: PermissionMode,
-): Promise<PermissionMode> {
-  while (true) {
-    const answer = (await rl.question(`Permission mode [${fallback}]: `)).trim();
-    const value = answer.length > 0 ? answer : fallback;
-    if (isPermissionMode(value)) return value;
-    writeLine(output, `Unknown permission mode "${value}". Choose one of: ${PERMISSION_MODES.join(", ")}`);
-  }
-}
+  const render = (): void => {
+    output.write("\x1b[2J\x1b[H");
+    writeLine(output, "chovy config");
+    writeLine(output, "");
+    writeLine(output, "Select provider");
+    writeLine(output, "  Use ↑/↓ to move, Space to select, Enter to accept.");
+    writeLine(output, "");
+    providers.forEach((p, i) => {
+      const cursor = i === index ? ">" : " ";
+      const checked = i === index ? "[x]" : "[ ]";
+      const info = getProvider(p).info;
+      const key = hasSecret(p) ? "configured" : "missing";
+      writeLine(output, `${cursor} ${checked} ${p.padEnd(10)} default=${info.defaultModel} key=${key}`);
+    });
+  };
 
-async function askYesNo(
-  rl: ReadlineInterface,
-  output: NodeJS.WriteStream,
-  prompt: string,
-  fallback: boolean,
-): Promise<boolean> {
-  const suffix = fallback ? "Y/n" : "y/N";
-  while (true) {
-    const answer = (await rl.question(`${prompt} [${suffix}]: `)).trim().toLowerCase();
-    if (!answer) return fallback;
-    if (answer === "y" || answer === "yes") return true;
-    if (answer === "n" || answer === "no") return false;
-    writeLine(output, "Please answer y or n.");
-  }
-}
-
-function keyPrompt(provider: ProviderId): string {
-  const status = hasSecret(provider) ? "configured" : "missing";
-  return `Write or update API key for ${provider}? (${status}; env ${envKeyFor(provider)})`;
+  return await new Promise<ProviderId>((resolve, reject) => {
+    const cleanup = (): void => {
+      input.off("data", onData);
+      input.setRawMode(wasRaw);
+      output.write("\n");
+    };
+    const finish = (): void => {
+      const selected = providers[index] ?? fallback;
+      cleanup();
+      writeLine(output, `Selected provider: ${selected}`);
+      resolve(selected);
+    };
+    const onData = (chunk: Buffer): void => {
+      const text = chunk.toString("utf8");
+      if (text === "\u0003") {
+        cleanup();
+        reject(new ChovyError("CONFIG_INVALID", "config wizard cancelled."));
+        return;
+      }
+      if (text === "\u001b[A" || text === "k") {
+        index = (index - 1 + providers.length) % providers.length;
+        render();
+        return;
+      }
+      if (text === "\u001b[B" || text === "j") {
+        index = (index + 1) % providers.length;
+        render();
+        return;
+      }
+      if (text === " " || text === "\r" || text === "\n") {
+        finish();
+      }
+    };
+    input.on("data", onData);
+    render();
+  });
 }
 
 async function askSecret(
@@ -392,15 +414,6 @@ function removeSecretLikeFields(config: JsonObject): void {
 
 function writeLine(output: NodeJS.WriteStream, text: string): void {
   output.write(text + "\n");
-}
-
-function enterCookedMode(input: NodeJS.ReadStream): () => void {
-  if (!input.isTTY || typeof input.setRawMode !== "function") return () => {};
-  const wasRaw = Boolean((input as { isRaw?: boolean }).isRaw);
-  if (wasRaw) input.setRawMode(false);
-  return () => {
-    if (wasRaw) input.setRawMode(true);
-  };
 }
 
 function stripJsonBom(raw: string): string {
