@@ -467,7 +467,7 @@ hdr("§12 ToolSession back-compat");
 hdr("§13 queryEngine.ts ≤ 600 lines (AGENTS.md §17)");
 {
   const src = readFileSync(join(__dirname, "..", "src", "engine", "queryEngine.ts"), "utf8");
-  const lines = src.split("\n").length;
+  const lines = src.trimEnd().split(/\r?\n/).length;
   truthy(lines <= 600, `queryEngine.ts is ${lines} lines (cap 600)`);
 }
 

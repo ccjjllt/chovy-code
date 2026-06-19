@@ -82,7 +82,7 @@ chovy-code/
   checkpoint per-5-rounds + GoalPanel + 3-way Tab 焦点 + headless `chovy goal`
   退出码 + 36/36 smoke）。
 
-**Phase I 完成**：step-30 端到端合流已落地（USAGE/DEVELOPING/KNOWN-LIMITATIONS、demo.sh、总 smoke、bench、CLI help 更新、mock E2E、QueryEngine ↔ Memory 注入 glue）。TMT / Checkpoint / SCW / CSG 均已纳入统一验收面。
+**Phase I 完成**：step-30 端到端合流已落地（USAGE/DEVELOPING/KNOWN-LIMITATIONS、跨平台 `bun run demo`、总 smoke、bench、CLI help 更新、mock E2E、QueryEngine ↔ Memory 注入 glue）。TMT / Checkpoint / SCW / CSG 均已纳入统一验收面。
 
 最新 A-E 复验报告见 [`complete/phase-a-e-acceptance.md`](./complete/phase-a-e-acceptance.md)；A-D 报告保留在 [`complete/phase-a-d-acceptance.md`](./complete/phase-a-d-acceptance.md)；A-C 旧报告在 [`complete/phase-a-c-acceptance.md`](./complete/phase-a-c-acceptance.md)。
 

@@ -66,7 +66,7 @@ chovy-code/
 
 **已具备**：Bun + Ink 工具链、Provider/Tool 注册中心、QueryEngine 主循环（5 层 system prompt + ATP 描述选择 + 6 层权限 + 12 hook 事件 + 流式 + 成本追踪 + 取消协议）、Tool Protocol v2（lean/full 描述 + ATP 预算分配器）、10 个核心工具（fs / exec / web / meta 含 dispatch）、Harness 缰绳层（权限引擎 6 层决策 + hook 引擎 12 事件 + 文件系统/命令沙箱）、7 个真实 provider（OpenAI / Anthropic / Gemini / DeepSeek / GLM / Kimi / MiniMax）+ PCM 能力矩阵 + 通用 SSE 解析 + 工具格式适配（含 MiniMax json-mode 降级）、子 Agent 运行时（SubAgentHandle 状态机 + pool 100 上限 + 父→子上下文快照 + 取消 cascade + 后台执行 + 5 内置角色）、SwarmR dispatch 核心（并行 fan-out ≤100 + 异构 provider 路由 + 自实现 p-limit 并发限流 + 全局预算 sticky-trip 熔断 + 进度/生命周期 bus）、Judge 聚合（4 schema + provider fallback 链 + tryFixJSON 五步修复 + ≤1 次自我修复 + 大 N 截断 + 取消独立 AC）、Ink UI 面板（SwarmPanel + AgentRow + AgentDetail + HotkeyBar + swarmStore + outputBuffer + Tab 焦点 + 16ms 节流）、`/goal` 长程任务循环（GoalState 5-state + JSON 持久化 + Loop-driven Stop + rubric/command/hybrid 收敛 + 死循环兜底 + checkpoint per-5-rounds + GoalPanel + 3-way Tab 焦点 + headless 退出码）、**TMT 存储底层（4 类记忆 schema 冻结 + bun:sqlite + FTS5 unicode61 + BM25/mixed ranker + InMemoryStore 降级 + frontmatter+bullets parser + 增量 sync mtime 缓存 + forceRebuild + memoryFile/notesFile/progressFile + memory.index telemetry + chovy mem list/show/search/rebuild/stats）**、**Checkpoint Writer（CheckpointCoordinator 30s/reason 防抖 + 路径沙箱 via ToolContext.agentRole + 7 段 markdown 模板 + ≤50 归档轮转 + 规则化 fallback + checkpoint.written telemetry + /checkpoint now|list slash + goal-loop per-5-rounds 触发 + 取消独立 AC）**、**Context Monitor（自适应阈值 thresholds() PCM 单源 + 4chars/token×1.2 安全估算 + ContextMonitor 3-state fresh/soft/hard + 上转换 sticky max-level + soft 自动 maybeCheckpoint('token-soft') + `<context-pressure level=…>` system prompt 注入 + HeaderBar 实时 ctx % + soft黄/hard红着色 + onContextSnapshot/onUsage UI 回调 + CHOVY_CTX_DISABLE 开关 + context.threshold telemetry 单源）**。**Phase G 复验（`docs/complete/phase-a-g-acceptance.md`）闭合 step-24 ↔ step-26 bridge**：coordinator 写出的 `checkpoints/*.md` 经 `syncFromFiles` file-primary 路径落 MemoryStore（`layer=checkpoint`）+ FTS 可检索，已由 smoke-step26 §13 覆盖。
 
-**已完成**：跨会话记忆注入（step-25 glue via `memory/injection.ts` + `engine/memoryHook.ts`）、上下文重建 step-28、技能图 CSG step-29、端到端集成 step-30（USAGE/DEVELOPING/KNOWN-LIMITATIONS、demo、总 smoke、bench、mock E2E）。
+**已完成**：跨会话记忆注入（step-25 glue via `memory/injection.ts` + `engine/memoryHook.ts`）、上下文重建 step-28、技能图 CSG step-29、端到端集成 step-30（USAGE/DEVELOPING/KNOWN-LIMITATIONS、跨平台 `bun run demo`、总 smoke、bench、mock E2E）。
 
 ---
 
@@ -683,7 +683,7 @@ chovy log tail                   # 看 telemetry
 - step-28 接驳点：queryEngine 在 `level==='hard'` 分支替换 `logger.warn` 为 `await rebuildContext(...)`，再 `monitor._resetForTesting()` / 新建 monitor，使 level 回到 fresh。
 
 **queryEngine.ts ≤ 600 行（硬限）**：
-- 当前 600 行（恰至硬限）。SCW 适配独立到 `src/engine/contextHook.ts`（108 行：`createContextMonitorIfEnabled` / `pendingFromMonitorState` / `notifyContextSnapshot`），spawn/dispatch handle 构造独立到 `runHelpers.ts:buildSpawnHandles`。
+- step-27 落地时为 600 行（恰至硬限；当前复验值见 §24/§25）。SCW 适配独立到 `src/engine/contextHook.ts`（108 行：`createContextMonitorIfEnabled` / `pendingFromMonitorState` / `notifyContextSnapshot`），spawn/dispatch handle 构造独立到 `runHelpers.ts:buildSpawnHandles`。
 - 后续 step-28 rebuild 接入时**不要**把逻辑塞回 queryEngine.ts；继续抽 helper（rebuild 候选 → `engine/rebuildHook.ts`）或扩展 `contextHook.ts`。
 
 **依赖图无环**：
@@ -738,7 +738,7 @@ chovy log tail                   # 看 telemetry
 - 极端：所有 selector + recent-K 都为空 → result.messages = `[<context-rebuilt with rule-summary>]` 单条。engine 主循环继续 —— provider 看到的是干净的 system 标记，可以重新理解任务。
 
 **queryEngine.ts ≤ 600 行（硬限）守恒**：
-- 当前 598 行（恰至硬限 - 2）。step-28 通过：① 把 SCW 块（11 行）替换为 `runScwRound` 单调用（21 行 → 净 +10）；② 抽 SCW glue 到 `engine/rebuildHook.ts:runScwRound`（同 §17 / §22 contextHook.ts 模式）；③ 合并多行 import → 单行。
+- step-28 落地时为 598 行（恰至硬限 - 2；当前复验值见 §24/§25）。step-28 通过：① 把 SCW 块（11 行）替换为 `runScwRound` 单调用（21 行 → 净 +10）；② 抽 SCW glue 到 `engine/rebuildHook.ts:runScwRound`（同 §17 / §22 contextHook.ts 模式）；③ 合并多行 import → 单行。
 - 后续 step-29/30 接入时**不要**把逻辑塞回 queryEngine.ts；继续抽 helper（CSG candidate → `engine/skillHook.ts`）或扩展 `rebuildHook.ts` / `contextHook.ts`。
 
 **依赖图无环**：
@@ -797,7 +797,7 @@ chovy log tail                   # 看 telemetry
 - `resolveManualClosure`：与 auto closure 共享 BFS，但 missing-required 视为 FATAL 由 caller 处理；conflicts-with-active 也 FATAL；继承分数无意义（manual = 锁定）。
 
 **queryEngine.ts ≤ 600 行（硬限）守恒**：
-- 当前 594 行（恰至硬限 - 6）。step-29 通过：① 把 `runSkillRound` 调用抽到 `engine/skillHook.ts`（同 §17 / §22 / §23 hook.ts 模式）；② 内联多行结构 `{...}` → 单行 `{...}`；③ 不在 queryEngine.ts 内加新 import 链（computeBudget 在 skillHook.ts 内调用）。
+- 当前 585 行（2026-06-19 复验，smoke 口径；硬限 - 15）。step-29 通过：① 把 `runSkillRound` 调用抽到 `engine/skillHook.ts`（同 §17 / §22 / §23 hook.ts 模式）；② 内联多行结构 `{...}` → 单行 `{...}`；③ 不在 queryEngine.ts 内加新 import 链（computeBudget 在 skillHook.ts 内调用）。
 - 后续 step-30 端到端接入时**不要**把逻辑塞回 queryEngine.ts；继续抽 helper（如 step-30 user-skill loader → `engine/skillHook.ts` 内扩展）或新建 hook 模块。
 
 **依赖图无环**：
@@ -820,5 +820,19 @@ chovy log tail                   # 看 telemetry
 2. prompt 注入用 dynamic suffix（不用 default-layer append）—— 保 PSF staticHash 跨轮稳定，与 step-15 §15 不变量对齐。
 两处均与用户在 plan 阶段确认。
 
+## 25. Phase I 不变量（Integration / E2E — step-30）
 
+> Phase I step-30 产物/验收见 `docs/complete/step-30-acceptance.md`。本节固化端到端验收入口，尤其是 Windows 复验发现的 demo 跨平台问题。
 
+**跨平台 demo 不变量**：
+- `bun run demo` 是端到端 demo 的正式验收入口；必须在 Windows/Unix 都可运行。
+- `scripts/demo.ts` 是 demo 单源实现，使用 Bun spawn + regex 断言，不依赖 Bash、`grep`、WSL、真实 provider 或用户真实 `~/.chovy`。
+- `scripts/demo.sh` 只作为 POSIX wrapper，内部委托 `bun run demo`；后续不要把业务断言重新写回 shell 管道。
+- demo / smoke 必须使用临时 `CHOVY_HOME` + `CHOVY_E2E_USE_MOCK=1`，避免污染用户真实配置或依赖外部网络/API。
+- demo 覆盖的 5 条创新主线保持：ATP bench、SwarmR 100 mock、TMT memory smoke、SCW context rebuild bench、CSG skill list；`/goal --help` 作为 bonus headless 入口。
+
+**验收命令不变量**：
+- Phase A-I 复验主线：`bun run typecheck`、`bun run smoke`、`bun run bench`、`bun run demo`。
+- Phase H-I 重点复验：`bun run scripts/smoke-step27.ts`、`bun run scripts/smoke-step28.ts`、`bun run scripts/smoke-step29.ts`。
+- Bench 输出 `WARN` 不阻断；typecheck、smoke、demo 失败应阻断。
+- `queryEngine.ts ≤ 600 行` 仍是硬限；行数口径以 `scripts/smoke-step29.ts` 的 `trimEnd().split(/\r?\n/)` 为准。

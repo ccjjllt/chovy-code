@@ -162,5 +162,8 @@ built-in defaults < ~/.chovy/config.json < CHOVY_* env < CLI flags
 ```bash
 bun run smoke
 bun run bench
-bash scripts/demo.sh
+bun run demo
 ```
+
+`scripts/demo.sh` 仍保留为 POSIX wrapper，内部调用 `bun run demo`；
+Windows 用户直接使用 `bun run demo`。

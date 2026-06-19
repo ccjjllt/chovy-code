@@ -11,7 +11,8 @@
 | `docs/USAGE.md` | 终端用户使用手册 |
 | `docs/DEVELOPING.md` | 开发者贡献与验证指南 |
 | `docs/KNOWN-LIMITATIONS.md` | 已知限制清单 |
-| `scripts/demo.sh` | 离线 demo，演示 ATP / SwarmR / TMT / SCW / CSG |
+| `scripts/demo.ts` | 跨平台离线 demo，演示 ATP / SwarmR / TMT / SCW / CSG |
+| `scripts/demo.sh` | POSIX wrapper，委托 `bun run demo` |
 | `scripts/smoke.ts` | 总集成 smoke，默认 mock provider |
 | `scripts/bench/tool-budget.bench.ts` | ATP 描述预算 bench |
 | `scripts/bench/memory-fts.bench.ts` | Memory FTS5 bench |
@@ -40,7 +41,7 @@
 bun run typecheck
 bun run smoke
 bun run bench
-bash scripts/demo.sh
+bun run demo
 bun run build
 ```
 
@@ -55,11 +56,11 @@ bun run smoke
 
 bun run bench
 PASS ATP describe: 0.15ms / 5ms
-PASS Memory FTS5 search: 1.77ms / 10ms
-PASS Swarm spawn 100: 64.26ms / 800ms
-PASS Context rebuild: 24.42ms / 50ms
+PASS Memory FTS5 search: 1.55ms / 10ms
+PASS Swarm spawn 100: 66.26ms / 800ms
+PASS Context rebuild: 26.41ms / 50ms
 
-bash scripts/demo.sh
+bun run demo
 PASS
 
 bun run build
@@ -70,4 +71,5 @@ PASS, bin/chovy.js built successfully
 
 - `CHOVY_E2E_USE_MOCK=1` 为离线 smoke/demo 提供 deterministic provider response，不验证真实 HTTP。
 - Bench 超阈值时打印 `WARN`，但本次四项均在阈值内。
-- `queryEngine.ts` 保持 584 行，低于 600 行硬限。
+- `queryEngine.ts` 保持 585 行（smoke 口径），低于 600 行硬限。
+- 2026-06-19 复验发现 `bash scripts/demo.sh` 在未安装 WSL distro 的 Windows 环境不可复现；已补 `scripts/demo.ts` + `bun run demo` 跨平台入口，`demo.sh` 改为 POSIX wrapper。

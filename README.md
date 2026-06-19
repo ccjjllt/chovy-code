@@ -19,6 +19,7 @@ It can run one-shot prompts, open an interactive REPL, call tools, spawn sub-age
 bun install
 bun run typecheck
 bun run smoke
+bun run demo
 
 # One-shot from source
 bun run start "explain this repo"
@@ -59,6 +60,7 @@ Permission modes: `default`, `plan`, `acceptEdits`, `auto`, `bypassPermissions`.
 ```bash
 bun run typecheck
 bun run smoke
+bun run demo
 bun run bench
 bun run build
 ```

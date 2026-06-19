@@ -14,6 +14,7 @@
     "build": "bun run scripts/build.ts",
     "start": "bun run src/cli/index.tsx",
     "typecheck": "tsc --noEmit",
+    "demo": "bun run scripts/demo.ts",
     "smoke": "bun run scripts/smoke.ts",
     "bench": "bun run bench:tool-budget && bun run bench:memory-fts && bun run bench:swarm-100 && bun run bench:context-rebuild",
     "bench:tool-budget": "bun run scripts/bench/tool-budget.bench.ts",

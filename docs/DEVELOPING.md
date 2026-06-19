@@ -77,6 +77,14 @@ bun run bench:context-rebuild
 
 Bench 超阈值只打印 `WARN`，不阻断 CI；类型错误和 smoke 失败应阻断。
 
+跨平台 demo：
+
+```bash
+bun run demo
+```
+
+`scripts/demo.sh` 只是 POSIX wrapper；Windows 复验不要依赖 WSL/bash。
+
 ## Mock E2E
 
 `CHOVY_E2E_USE_MOCK=1` 会让 OpenAI-compatible provider 返回本地 deterministic completion：
@@ -95,6 +103,7 @@ CHOVY_E2E_USE_MOCK=1 OPENAI_API_KEY=mock bun run start "say hi"
 
 - `bun run typecheck`
 - `bun run smoke`
+- `bun run demo`
 - 相关 step smoke
 - 必要时 `bun run bench`
 - README/docs 与 CLI help 一致

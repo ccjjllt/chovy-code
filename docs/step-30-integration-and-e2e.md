@@ -19,7 +19,8 @@ docs/
 ├── DEVELOPING.md         # 开发者贡献指南
 └── KNOWN-LIMITATIONS.md
 scripts/
-├── demo.sh               # 演示 5 个创新点
+├── demo.ts               # 跨平台演示 5 个创新点（Windows/Unix）
+├── demo.sh               # POSIX wrapper，委托 bun run demo
 ├── smoke.ts              # 启动级 smoke test
 └── bench/
     ├── tool-budget.bench.ts
@@ -46,32 +47,14 @@ src/cli/
 | /goal ↔ Checkpoint | 每 N 轮触发 |
 | Memory ↔ Checkpoint | latest.md upsert 入 db |
 
-## End-to-End Demo（demo.sh）
+## End-to-End Demo（bun run demo）
 
 ```bash
-#!/usr/bin/env bash
-set -e
-
-# 1. ATP：工具预算演示
-chovy --provider glm "请只用 Glob 找出当前目录所有 .ts 文件" \
-  | grep "level=lean.*level=full"
-
-# 2. Swarm + Judge：异构子 agent + 聚合
-chovy --provider openai "对比 Bun 与 Node 在启动速度、生态、TS 原生支持三方面，dispatch 三个 agent 用不同 provider"
-
-# 3. Goal Loop：让仓库 typecheck 通过
-chovy /goal "bun run typecheck 通过"
-
-# 4. Memory：第二次进入会话注入
-chovy /mem write --layer project --type decision --importance 80 "we use Bun + Ink"
-chovy "新需求：xxx"   # 检查 [memory] 段出现
-
-# 5. Context Rebuild：构造长会话
-node scripts/seed-long-session.ts        # 把会话填到 70%
-chovy "继续刚才的任务"                    # 应触发 soft 提示
-node scripts/seed-long-session.ts --hard # 填到 92%
-chovy "继续"                              # 应触发 hard 重建
+bun run demo
 ```
+
+`scripts/demo.ts` 使用 mock provider + 临时 `CHOVY_HOME`，不依赖真实 API、bash、grep 或 WSL。
+`scripts/demo.sh` 保留给 POSIX 用户，内部只调用 `bun run demo`。
 
 ## Smoke test
 
@@ -127,7 +110,7 @@ CI 中用 `bun run smoke`。
 
 ## 验收标准
 
-- demo.sh 全部通过；
+- `bun run demo` 全部通过（Windows/Unix 同一入口）；
 - smoke.ts 全部通过；
 - bench 数字在阈值内；
 - `chovy --help` 与 `chovy <cmd> --help` 文本完整且最新；
