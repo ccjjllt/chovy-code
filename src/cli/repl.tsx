@@ -64,6 +64,8 @@ import { useKeybinding } from "../keybindings/index.js";
 import { CommandPalette } from "../palette/index.js";
 import { usePaletteState, openPalette } from "../palette/state.js";
 import { registerAllCommandSources } from "./commandSources.js";
+import { version } from "../version.js";
+import { WelcomeScreen } from "../screens/welcome.js";
 
 interface Props {
   provider: ProviderId;
@@ -130,6 +132,14 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     ctxUsedTokens: 0,
     ctxTotalTokens: 0,
   });
+
+  const welcomeDismissedRef = useRef(false);
+  const showWelcome = !welcomeDismissedRef.current
+    && messages.length <= 1 && messages[0]?.role === "system";
+
+  useEffect(() => {
+    if (messages.length > 1) welcomeDismissedRef.current = true;
+  }, [messages.length]);
 
   const cancelledRef = useRef(false);
   const ctrlCArmedRef = useRef(false);
@@ -773,6 +783,18 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
                 setGoalState(null);
                 appendSystem("Goal cancelled.");
               }}
+            />
+          </Box>
+        ) : null}
+
+        {showWelcome ? (
+          <Box marginTop={1} marginBottom={1}>
+            <WelcomeScreen
+              provider={provider}
+              model={model}
+              mode={mode}
+              cwd={process.cwd()}
+              version={version}
             />
           </Box>
         ) : null}

@@ -47,5 +47,19 @@ export const zh = {
       left: "←",
       right: "→",
     }
+  },
+  welcome: {
+    greet: "欢迎回来！",
+    whatsnew: "新功能",
+    releasenotes: "/release-notes 查看更多",
+    tips: {
+      title: "上手提示",
+      init: "运行 /init 初始化 chovy.md",
+      palette: "• Ctrl+P 打开命令面板",
+      settings: "• Ctrl+, 进入设置",
+      lang: "• Ctrl+L 切换中英",
+      buddy: "• /buddy 与吉祥物互动",
+      goal: "• /goal 进入长程任务循环"
+    }
   }
 } as const;
