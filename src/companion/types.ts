@@ -32,3 +32,12 @@ export interface RawGifMeta {
   frames: RawFrame[];
   loopCount: number;
 }
+
+export type CompanionState = "idle" | "work" | "think" | "done" | "error";
+
+export interface CompanionFrame {
+  ansi: string;
+  widthCols: number;
+  heightRows: number;
+  delayMs: number;
+}
