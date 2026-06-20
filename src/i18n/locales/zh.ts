@@ -25,7 +25,8 @@ export const zh = {
     skill: { desc: "管理技能（list/show/plan/activate/clear）" },
     skills: { desc: "已加载技能名单（别名：/skill list）" },
     provider: { desc: "列出已注册 provider" },
-    config: { desc: "打开交互式配置向导" }
+    config: { desc: "打开交互式配置向导" },
+    settings: { desc: "打开设置界面" }
   },
   header: {
     cost: "花费 {{ cost }}",

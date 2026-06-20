@@ -12,7 +12,6 @@ import {
   chovyConfigPath,
   chovySecretsDir,
   ensureHomeDirs,
-  safeFs,
   safeFsSync,
 } from "../fs/index.js";
 import { listProviders, getProvider } from "../providers/index.js";
@@ -55,6 +54,8 @@ interface CurrentConfig {
   permissionMode?: PermissionMode;
   raw: JsonObject;
 }
+
+import { runFieldOnce } from "../screens/settings.js";
 
 export async function runConfigWizard(
   opts: ConfigWizardOptions = {},
@@ -136,33 +137,47 @@ export async function runConfigWizard(
     throw new ChovyError("CONFIG_INVALID", "permissionMode is required.");
   }
 
-  const config = { ...current.raw };
-  removeSecretLikeFields(config);
-  config["provider"] = provider;
+  // Use the SettingsField infrastructure to write the config.
+  await runFieldOnce("provider.current", provider);
+  
   if (model !== undefined) {
-    const trimmed = model.trim();
-    if (trimmed.length > 0) config["model"] = trimmed;
-    else delete config["model"];
+    await runFieldOnce("model.current", model.trim());
   } else if (interactive) {
-    delete config["model"];
+    // Interactive mode resets model to default if not explicitly provided
+    await runFieldOnce("model.current", "");
   }
-  config["permissionMode"] = permissionMode;
-
-  await safeFs.write(chovyConfigPath(), JSON.stringify(config, null, 2) + "\n");
+  
+  // Note: We use general.permissionMode to match SettingsField, 
+  // though older code saved directly to config.permissionMode.
+  await runFieldOnce("general.permissionMode", permissionMode);
 
   if (key !== undefined) {
     const trimmed = key.trim();
     if (trimmed.length > 0) {
-      await safeFs.mkdirp(chovySecretsDir());
-      await safeFs.write(join(chovySecretsDir(), provider), trimmed);
-      resetSecretsCache();
+      // SettingsField reads `loadConfig().provider` which might yield a different provider
+      // if `CHOVY_PROVIDER` is set in the environment or if it lacks CLI `args` context.
+      const originalEnvProvider = process.env["CHOVY_PROVIDER"];
+      process.env["CHOVY_PROVIDER"] = provider;
+      try {
+        await runFieldOnce("provider.apiKey", trimmed);
+      } finally {
+        if (originalEnvProvider === undefined) {
+          delete process.env["CHOVY_PROVIDER"];
+        } else {
+          process.env["CHOVY_PROVIDER"] = originalEnvProvider;
+        }
+      }
     }
   }
+
+  // Refresh caches to match pre-refactor behavior and construct result
   resetConfigCache();
+  resetSecretsCache();
+  const finalModel = model?.trim() || undefined;
 
   const result: ConfigWizardResult = {
     provider,
-    model: typeof config["model"] === "string" ? config["model"] : undefined,
+    model: finalModel,
     permissionMode,
     keyStatus: hasSecret(provider) ? "configured" : "missing",
     configPath: chovyConfigPath(),
@@ -402,14 +417,6 @@ function isProviderId(value: unknown): value is ProviderId {
 
 function isPermissionMode(value: unknown): value is PermissionMode {
   return typeof value === "string" && (PERMISSION_MODES as readonly string[]).includes(value);
-}
-
-function removeSecretLikeFields(config: JsonObject): void {
-  for (const key of Object.keys(config)) {
-    if (/api[_-]?key/i.test(key) || /secret/i.test(key)) {
-      delete config[key];
-    }
-  }
 }
 
 function writeLine(output: NodeJS.WriteStream, text: string): void {

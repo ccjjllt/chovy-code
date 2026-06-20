@@ -25,7 +25,8 @@ export const en = {
     skill: { desc: "Manage skills (list/show/plan/activate/clear)" },
     skills: { desc: "List loaded skills (alias for /skill list)" },
     provider: { desc: "List registered providers" },
-    config: { desc: "Open interactive configuration wizard" }
+    config: { desc: "Open interactive configuration wizard" },
+    settings: { desc: "Open settings interface" }
   },
   header: {
     cost: "Cost {{ cost }}",

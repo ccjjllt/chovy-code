@@ -9,6 +9,7 @@ import { SplitPane } from "../tui/primitives/SplitPane.js";
 import { CATEGORY_LIST } from "./settingsTabs/index.js";
 import type { SettingsCategory } from "./state.js";
 import type { ReplCtx } from "../cli/slashCommands.js";
+import { ChovyError } from "../types/errors.js";
 
 // Import panel placeholders
 import { GeneralPanel } from "./settingsTabs/general.js";
@@ -18,6 +19,15 @@ import { ThemePanel } from "./settingsTabs/theme.js";
 import { LanguagePanel } from "./settingsTabs/language.js";
 import { KeybindPanel } from "./settingsTabs/keybind.js";
 import { AdvancedPanel } from "./settingsTabs/advanced.js";
+
+export async function runFieldOnce(fieldId: string, value: string): Promise<void> {
+  const { listSettingsFields } = await import("./settingsTabs/index.js");
+  const f = listSettingsFields().find(x => x.id === fieldId);
+  if (!f) throw new ChovyError("INTERNAL", `unknown setting: ${fieldId}`);
+  const err = f.validate?.(value);
+  if (err) throw new ChovyError("CONFIG_INVALID", err);
+  await f.write(value);
+}
 
 function SettingsHeader({ dirty }: { dirty: number }) {
   const theme = useTheme();

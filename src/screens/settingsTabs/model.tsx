@@ -40,7 +40,7 @@ const MODEL_FIELDS: SettingsField[] = [
     category: "model",
     type: "select",
     read: () => loadConfig().model ?? defaultModelFor(loadConfig().provider),
-    write: async (v) => saveConfigPatch({ model: v }),
+    write: async (v) => saveConfigPatch({ model: v.trim() || undefined }),
     options: () =>
       listModelsForCurrentProvider()
         .filter((m) => isModelVisible(loadConfig().provider, m))

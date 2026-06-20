@@ -274,7 +274,10 @@ function mergeLayer(base: PartialConfig, over: PartialConfig): PartialConfig {
   const out: PartialConfig = { ...base };
   for (const key of Object.keys(over) as Array<keyof PartialConfig>) {
     const v = over[key];
-    if (v === undefined) continue;
+    if (v === undefined) {
+      delete (out as Record<string, unknown>)[key];
+      continue;
+    }
     if (
       (key === "swarm" || key === "memory" || key === "context" || key === "theme" || key === "i18n" || key === "keybindings" || key === "companion" || key === "general" || key === "tui" || key === "providers" || key === "modelOptions" || key === "permissions") &&
       typeof v === "object" &&

@@ -56,8 +56,8 @@ const FIELDS: SettingsField[] = [
     category: "general",
     section: "behavior",
     type: "select",
-    read: () => loadConfig().permissions?.mode ?? "default",
-    write: async (v: string) => saveConfigPatch({ permissions: { mode: v as any } }),
+    read: () => loadConfig().permissionMode ?? "default",
+    write: async (v: string) => saveConfigPatch({ permissionMode: v as any }),
     options: [
       { value: "default", label: "default" },
       { value: "ask", label: "ask" },

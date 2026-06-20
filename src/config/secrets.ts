@@ -105,7 +105,7 @@ export function providerSource(provider: ProviderId): "env" | "secrets" | "missi
 export async function writeSecret(provider: ProviderId, secret: string): Promise<void> {
   const { safeFs } = await import("../fs/index.js");
   const path = join(chovySecretsDir(), provider);
-  await safeFs.write(path, secret + "\n");
+  await safeFs.write(path, secret);
   cache.set(provider, secret);
 }
 
