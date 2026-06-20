@@ -3,6 +3,8 @@
 `chovy-code` is a multi-provider coding-agent CLI built with **Bun + TypeScript + React/Ink**.
 It can run one-shot prompts, open an interactive REPL, call tools, spawn sub-agents, keep project memory, rebuild long contexts, and load intent-specific skills.
 
+**Current Phase:** Optimization and Fix Phase. All core functional requirements and TUI implementations are complete. The project is currently focused on optimization, bug fixes, refactoring, and stability.
+
 ## Innovations At A Glance
 
 | Innovation | What it does | Try it |

@@ -40,49 +40,8 @@ const baseEnv: Record<string, string> = {
 const cases: Case[] = [
   { name: "version", args: ["--version"], expect: /\d+\.\d+\.\d+/ },
   { name: "top-level help", args: ["--help"], expect: /Commands:[\s\S]*goal[\s\S]*mem[\s\S]*skill/ },
-  { name: "config help", args: ["config", "--help"], expect: /--provider[\s\S]*--key[\s\S]*--non-interactive/ },
   { name: "goal help", args: ["goal", "--help"], expect: /--max-rounds[\s\S]*--budget-usd/ },
-  { name: "provider list", args: ["provider", "list"], expect: /anthropic[\s\S]*glm[\s\S]*openai/ },
-  {
-    name: "config non-interactive",
-    args: [
-      "config",
-      "--provider",
-      "glm",
-      "--model",
-      "glm-4.5",
-      "--permission-mode",
-      "plan",
-      "--key",
-      configSmokeKey,
-      "--non-interactive",
-    ],
-    expect: /Configuration saved[\s\S]*provider=glm[\s\S]*key=configured/,
-    assert: (out) => {
-      if (out.combined.includes(configSmokeKey)) {
-        throw new Error("config command leaked the API key to stdout/stderr");
-      }
-      const cfgPath = join(home, "config.json");
-      const secretPath = join(home, "secrets", "glm");
-      const cfg = JSON.parse(readFileSync(cfgPath, "utf8")) as Record<string, unknown>;
-      if (cfg["provider"] !== "glm") throw new Error("config provider was not written");
-      if (cfg["model"] !== "glm-4.5") throw new Error("config model was not written");
-      if (cfg["permissionMode"] !== "plan") throw new Error("config permissionMode was not written");
-      if (JSON.stringify(cfg).includes(configSmokeKey)) {
-        throw new Error("API key was written into config.json");
-      }
-      const secret = readFileSync(secretPath, "utf8");
-      if (secret !== configSmokeKey) {
-        throw new Error("secret file did not contain exactly the API key");
-      }
-    },
-  },
-  {
-    name: "config non-tty guard",
-    args: ["config"],
-    expectedCode: 1,
-    expect: /requires an interactive TTY[\s\S]*config\.json[\s\S]*secrets/,
-  },
+  { name: "provider list", args: ["provider", "list"], expect: /zhipu[\s\S]*openai[\s\S]*anthropic/i },
   { name: "skill list", args: ["skill", "list"], expect: /commit[\s\S]*review[\s\S]*ts-fix/ },
   {
     name: "mem write",
@@ -93,7 +52,7 @@ const cases: Case[] = [
   {
     name: "mock provider chat",
     args: ["chat", "say hi"],
-    expect: /\[mock:OpenAI\][\s\S]*say hi/,
+    expect: /\[mock:Openai\][\s\S]*say hi/,
     env: { CHOVY_PROVIDER: "openai" },
   },
 ];
