@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { Box, Text } from "ink";
 import { useTheme } from "../../theme/index.js";
 import { type ToastEvent, useToasts, dismissToast } from "./toastBus.js";
+import { useFadeIn } from "../../tui/animations/useFadeIn.js";
 
 const MAX_VISIBLE = 3;
 
@@ -28,6 +29,7 @@ export function ToastHost(): React.ReactElement | null {
 
 function Toast({ item }: { item: ToastEvent }) {
   const theme = useTheme();
+  const { dim } = useFadeIn(true);
   
   const colors: Record<ToastEvent["variant"], string> = {
     info: theme.accent,
@@ -45,8 +47,8 @@ function Toast({ item }: { item: ToastEvent }) {
 
   return (
     <Box borderStyle="round" borderColor={colors[item.variant]} paddingX={1}>
-      <Text color={colors[item.variant]}>{icons[item.variant]}</Text>
-      <Text> {item.text}</Text>
+      <Text color={colors[item.variant]} dimColor={dim}>{icons[item.variant]}</Text>
+      <Text dimColor={dim}> {item.text}</Text>
     </Box>
   );
 }

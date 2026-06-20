@@ -10,6 +10,7 @@ import { CATEGORY_LIST } from "./settingsTabs/index.js";
 import type { SettingsCategory } from "./state.js";
 import type { ReplCtx } from "../cli/slashCommands.js";
 import { ChovyError } from "../types/errors.js";
+import { useSlideUp } from "../tui/animations/useSlideUp.js";
 
 // Import panel placeholders
 import { GeneralPanel } from "./settingsTabs/general.js";
@@ -77,6 +78,7 @@ export function SettingsScreen({ ctx: _ctx }: { ctx: ReplCtx }): React.ReactElem
   const { open, category, dirty, highlightFieldId } = useSettingsState();
   const theme = useTheme();
   const caps = useTerminalCaps();
+  const { offset } = useSlideUp(open, 5);
 
   useKeybinding("settings.cancel", () => closeSettings({ discard: true }), { isActive: open });
   useKeybinding("settings.save", () => { void commitDirty(); }, { isActive: open });
@@ -100,6 +102,7 @@ export function SettingsScreen({ ctx: _ctx }: { ctx: ReplCtx }): React.ReactElem
   return (
     <Box
       flexDirection="column"
+      marginTop={offset}
       borderStyle={theme.borderStyle}
       borderColor={theme.accent}
       paddingX={1}

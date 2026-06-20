@@ -12,6 +12,7 @@ import { filterAndSort } from "./search.js";
 import type { ReplCtx } from "../cli/slashCommands.js";
 import { recordEvent } from "../screens/onboarding.js";
 import { version } from "../version.js";
+import { useSlideUp } from "../tui/animations/useSlideUp.js";
 
 function getCommands(_ctx: ReplCtx): PaletteCommand[] {
   return [
@@ -103,9 +104,10 @@ export function CommandPalette({ ctx }: { ctx: ReplCtx }) {
   const theme = useTheme();
   const caps = useTerminalCaps();
   const width = Math.min(caps.cols - 4, 80);
+  const { offset } = useSlideUp(open, 3);
 
   return (
-    <Box flexDirection="column"
+    <Box flexDirection="column" marginTop={offset}
          borderStyle={theme.borderStyle} borderColor={theme.accent}
          paddingX={1} width={width} height={Math.min(caps.rows - 4, 24)}>
       <PaletteHeader />

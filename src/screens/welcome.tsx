@@ -10,6 +10,7 @@ import { useDynamicTips } from "./tips.js";
 import type { ProviderId } from "../types/index.js";
 import type { PermissionMode } from "../config/index.js";
 import * as path from "node:path";
+import { useTypewriter } from "../tui/animations/useTypewriter.js";
 
 interface Props {
   provider: ProviderId;
@@ -52,9 +53,10 @@ function shortCwd(cwd: string, maxLength: number): string {
 }
 
 function WelcomeMascotColumn({ provider, model, mode, cwd }: Props): React.ReactElement {
+  const greetText = useTypewriter(t("welcome.greet"));
   return (
     <Box flexDirection="column" alignItems="center" paddingY={1}>
-      <Text bold>{t("welcome.greet")}</Text>
+      <Text bold>{greetText}</Text>
       <Box marginTop={1} marginBottom={1}>
         <CompanionPlayer gifPath={resolveGifPath("idle", "default", cwd)} active cols={18}/>
       </Box>
@@ -87,9 +89,10 @@ function WelcomeNarrow(props: Props): React.ReactElement {
   const theme = useTheme();
   const caps = useTerminalCaps();
   const noCompanion = process.env["CHOVY_NO_COMPANION"] === "1";
+  const greetText = useTypewriter(t("welcome.greet"));
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={theme.primary}>
-      <Text bold>{t("welcome.greet")}</Text>
+      <Text bold>{greetText}</Text>
       {!noCompanion && (
         <CompanionPlayer gifPath={resolveGifPath("idle", "default", props.cwd)} active
                          cols={Math.min(caps.cols - 4, 20)} />

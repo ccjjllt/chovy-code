@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import { loadFramesCached } from "./cache.js";
-import { AsciiFallback } from "./ascii-fallback.js";
 import { logger } from "../logger/index.js";
+import { Spinner } from "../tui/kit/index.js";
+import { t } from "../i18n/index.js";
 
 interface CompanionPlayerProps {
   gifPath: string;
@@ -44,7 +45,7 @@ export function CompanionPlayer({ gifPath, active, cols, onReady }: CompanionPla
   }, [active, frames, idx]);
 
   if (!frames) {
-    return <AsciiFallback state="loading" />;
+    return <Spinner label={t("companion.loading")} />;
   }
 
   return (
