@@ -21,22 +21,32 @@ import { chovySecretsDir } from "./home.js";
 
 export const ENV_KEYS: Record<ProviderId, string> = {
   openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  gemini: "GEMINI_API_KEY",
   deepseek: "DEEPSEEK_API_KEY",
-  minimax: "MINIMAX_API_KEY",
-  glm: "GLM_API_KEY",
+  zai: "ZAI_API_KEY",
+  zhipu: "ZHIPU_API_KEY",
   kimi: "KIMI_API_KEY",
+  minimax: "MINIMAX_API_KEY",
+  alibaba: "ALIBABA_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  google: "GOOGLE_API_KEY",
+  xai: "XAI_API_KEY",
+  siliconflow: "SILICONFLOW_API_KEY",
+  stepfun: "STEPFUN_API_KEY",
 };
 
 const BASE_URL_KEYS: Record<ProviderId, string> = {
   openai: "OPENAI_BASE_URL",
-  anthropic: "ANTHROPIC_BASE_URL",
-  gemini: "GEMINI_BASE_URL",
   deepseek: "DEEPSEEK_BASE_URL",
-  minimax: "MINIMAX_BASE_URL",
-  glm: "GLM_BASE_URL",
+  zai: "ZAI_BASE_URL",
+  zhipu: "ZHIPU_BASE_URL",
   kimi: "KIMI_BASE_URL",
+  minimax: "MINIMAX_BASE_URL",
+  alibaba: "ALIBABA_BASE_URL",
+  anthropic: "ANTHROPIC_BASE_URL",
+  google: "GOOGLE_BASE_URL",
+  xai: "XAI_BASE_URL",
+  siliconflow: "SILICONFLOW_BASE_URL",
+  stepfun: "STEPFUN_BASE_URL",
 };
 
 // Cached on first read to avoid re-stat-ing the secrets file on every call.
@@ -83,6 +93,15 @@ export function getSecret(provider: ProviderId): string | undefined {
 
   cache.set(provider, null);
   return undefined;
+}
+
+import { writeFileSync } from "node:fs";
+
+/** Save the API key for `provider` to the secrets file. */
+export function setSecret(provider: ProviderId, key: string): void {
+  const path = join(chovySecretsDir(), provider);
+  writeFileSync(path, key, "utf8");
+  cache.set(provider, key);
 }
 
 /** True iff the provider has an API key reachable via env or secrets file. */

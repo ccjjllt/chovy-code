@@ -200,8 +200,8 @@ function makeResult(
     confidence: 0.1,
   });
   const restore = installJudgeProvider(
-    "glm",
-    makeJudgeProvider("glm", [verdict]),
+    "zhipu",
+    makeJudgeProvider("zhipu", [verdict]),
   );
 
   const results = [
@@ -261,8 +261,8 @@ function makeResult(
     }) +
     "\n```\nHope this helps.";
   const restore = installJudgeProvider(
-    "gemini",
-    makeJudgeProvider("gemini", [verdict]),
+    "kimi",
+    makeJudgeProvider("kimi", [verdict]),
   );
 
   const results = [makeResult("a", true, "mostly yes")];
@@ -313,8 +313,8 @@ function makeResult(
 {
   const garbage = "This is not JSON at all, just prose with no braces.";
   const restore = installJudgeProvider(
-    "glm",
-    makeJudgeProvider("glm", [garbage, garbage]),
+    "zhipu",
+    makeJudgeProvider("zhipu", [garbage, garbage]),
   );
 
   const results = [makeResult("a", true, "x")];
@@ -391,7 +391,7 @@ function makeResult(
       ],
       topPick: "a",
     });
-    const restore = installJudgeProvider("glm", makeJudgeProvider("glm", [verdict]));
+    const restore = installJudgeProvider("zhipu", makeJudgeProvider("zhipu", [verdict]));
     const results = [makeResult("a", true, "thorough"), makeResult("b", true, "partial")];
     const out = await runJudge(results, { judge: { enabled: true, schema: "rank" } }, makeParentCtx());
     check("rank: ok", out.ok === true, `reason=${out.reason}`);

@@ -19,7 +19,7 @@
  */
 
 import { logger } from "../logger/index.js";
-import { CAPS } from "../providers/capabilities.js";
+import { getCapability } from "../providers/capabilities.js";
 import type { ChovyConfig } from "../config/config.js";
 import type { ProviderId } from "../types/provider.js";
 
@@ -115,7 +115,7 @@ export function thresholds(
   cfg: ChovyConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): ContextThresholds {
-  const cap = CAPS[provider];
+  const cap = getCapability(provider);
   if (!cap) {
     // Should never happen — provider validated by zod at config load. Bail
     // with a generous fallback so callers don't crash.

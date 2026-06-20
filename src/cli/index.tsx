@@ -18,7 +18,6 @@ import { getSubAgentPool } from "../agent/index.js"; // step-22: pool singleton 
 import { listBuiltinAgents } from "../agent/builtin/index.js"; // step-19: built-in role registry
 import { ChovyError } from "../types/errors.js";
 import { AgentRepl } from "./components/AgentRepl.js";
-import { runConfigWizard } from "./configWizard.js";
 import { ChovyRepl } from "./repl.js";
 import type { ProviderId } from "../types/index.js";
 
@@ -48,14 +47,6 @@ interface ResolvedCtx {
   provider: ProviderId;
   model: string | undefined;
   mode: PermissionMode;
-}
-
-interface ConfigCommandFlags {
-  provider?: string;
-  model?: string;
-  key?: string;
-  permissionMode?: string;
-  nonInteractive?: boolean;
 }
 
 /**
@@ -177,7 +168,7 @@ program
   .name("chovy")
   .description("A coding agent built with Bun + TypeScript + React/Ink.")
   .version(version)
-  .option("-p, --provider <id>", "provider: openai|anthropic|gemini|deepseek|minimax|glm|kimi")
+  .option("-p, --provider <id>", "provider: openai|deepseek|zai|zhipu|kimi|minimax|alibaba")
   .option("-m, --model <id>", "override the provider's default model")
   .option("-t, --temperature <n>", "sampling temperature", parseFloatOpt)
   .option("--max-tokens <n>", "max tokens for the completion", parseIntOpt)
@@ -529,28 +520,6 @@ providerCmd.command("list").description("列出已注册 provider")
     for (const p of listProviders()) {
       logger.info(`${p.info.id}\t${p.info.label}\tdefault=${p.info.defaultModel}`);
     }
-  });
-
-// `chovy config` — interactive provider/model/permission/key setup.
-program
-  .command("config")
-  .description("交互式配置：空格选择 provider，然后输入 API key")
-  .option("--provider <id>", "provider: openai|anthropic|gemini|deepseek|minimax|glm|kimi")
-  .option("--model <id>", "model id; omit or pass an empty value to use provider default")
-  .option("--permission-mode <mode>", `permission mode: ${PERMISSION_MODES.join("|")}`)
-  .option("--key <value>", "API key to write into ~/.chovy/secrets/<provider>")
-  .option("--non-interactive", "do not prompt; only use supplied flags and existing config")
-  .action(async (options: ConfigCommandFlags, ...args: unknown[]) => {
-    const command = commandFromActionArgs(args);
-    const all = command.optsWithGlobals() as CommonFlags & ConfigCommandFlags;
-    resolveCtx(all);
-    await runConfigWizard({
-      provider: all.provider ?? options.provider,
-      model: all.model ?? options.model,
-      key: all.key ?? options.key,
-      permissionMode: all.permissionMode ?? options.permissionMode,
-      nonInteractive: all.nonInteractive ?? options.nonInteractive,
-    });
   });
 
 program.parseAsync(process.argv).catch((err: unknown) => {

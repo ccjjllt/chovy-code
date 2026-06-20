@@ -59,11 +59,11 @@ function header(title: string): void {
 header("1. Provider Capability Matrix (PCM)");
 const allIds: ProviderId[] = [
   "openai",
-  "anthropic",
-  "gemini",
+  "zai",
+  "kimi",
   "deepseek",
   "minimax",
-  "glm",
+  "zhipu",
   "kimi",
 ];
 for (const id of allIds) {
@@ -231,7 +231,7 @@ header("3. Per-family delta merger");
         '{"candidates":[{"content":{"parts":[{"functionCall":{"name":"echo","args":{"message":"hi"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":2}}',
     },
   ];
-  for (const ev of evs) mergeDelta("gemini", accum, ev);
+  for (const ev of evs) mergeDelta("kimi", accum, ev);
   const final = finalizeCompletion(accum);
   check("gemini: text accumulated", final.content === "hi");
   check(
@@ -376,7 +376,7 @@ const cases: MockCase[] = [
     },
   },
   {
-    id: "glm",
+    id: "zhipu",
     envKey: "GLM_API_KEY",
     expectToolCall: true,
     json: {
@@ -414,7 +414,7 @@ const cases: MockCase[] = [
     },
   },
   {
-    id: "anthropic",
+    id: "zai",
     envKey: "ANTHROPIC_API_KEY",
     expectToolCall: true,
     json: {
@@ -426,7 +426,7 @@ const cases: MockCase[] = [
     },
   },
   {
-    id: "gemini",
+    id: "kimi",
     envKey: "GEMINI_API_KEY",
     expectToolCall: true,
     json: {
@@ -523,7 +523,7 @@ const streamCases: StreamCase[] = [
     ],
   },
   {
-    id: "anthropic",
+    id: "zai",
     envKey: "ANTHROPIC_API_KEY",
     chunks: [
       'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":3,"output_tokens":0}}}\n\n',
@@ -533,7 +533,7 @@ const streamCases: StreamCase[] = [
     ],
   },
   {
-    id: "gemini",
+    id: "kimi",
     envKey: "GEMINI_API_KEY",
     chunks: [
       'data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}\n\n',

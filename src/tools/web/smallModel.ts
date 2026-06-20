@@ -31,23 +31,28 @@ import type { ProviderId } from "../../types/index.js";
 /** Per-provider default small / fast model id. Mirrors `docs/step-10 §2`. */
 const SMALL_MODEL_BY_PROVIDER: Record<ProviderId, string> = {
   openai: "gpt-4o-mini",
-  anthropic: "claude-haiku-4-5",
-  gemini: "gemini-1.5-flash",
   deepseek: "deepseek-chat",
-  minimax: "abab6.5s-chat",
-  glm: "glm-4-air",
+  zai: "gpt-4o-mini",
+  zhipu: "glm-4-flash",
   kimi: "moonshot-v1-8k",
+  minimax: "abab6.5s-chat",
+  alibaba: "qwen-turbo",
+  anthropic: "claude-3-5-haiku-20241022",
+  google: "gemini-2.5-flash",
+  xai: "grok-2-1212",
+  siliconflow: "THUDM/glm-4-9b-chat",
+  stepfun: "step-3.5-flash",
 };
 
 /** Priority order for picking a small-model backend when nothing is set. */
 const DEFAULT_PROVIDER_ORDER: ProviderId[] = [
   "openai",
-  "glm",
-  "gemini",
+  "zhipu",
   "deepseek",
-  "anthropic",
+  "zai",
   "kimi",
   "minimax",
+  "alibaba",
 ];
 
 export interface SummarizeOptions {

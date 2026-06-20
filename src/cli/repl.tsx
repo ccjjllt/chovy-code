@@ -12,6 +12,7 @@ import { HelpOverlay } from "./components/HelpOverlay.js";
 import { StatusLine } from "./components/StatusLine.js";
 import { SwarmPanel } from "./components/SwarmPanel.js";
 import { GoalPanel } from "./components/GoalPanel.js";
+import { SettingsScreen } from "./components/settings/SettingsScreen.js";
 import { InputBox } from "./inputBox.js";
 import { useSwarmState, swarmCounts } from "./state/swarmStore.js";
 import {
@@ -27,7 +28,7 @@ import {
   type ReplMemRuntime,
   type ReplMemListItem,
 } from "./slashCommands.js";
-import { runConfigWizard } from "./configWizard.js";
+
 import {
   createGoal,
   finalizeGoal,
@@ -55,7 +56,7 @@ import {
   resolveManualClosure,
 } from "../skills/index.js";
 import { computeBudget } from "../context/budgets.js";
-import { loadConfig } from "../config/config.js";
+import { loadConfig, resetConfigCache } from "../config/config.js";
 import type { GoalState, ToolSession } from "../types/index.js";
 
 interface Props {
@@ -72,23 +73,18 @@ const newId = (): string => {
 
 /**
  * Interactive REPL screen.
- *
- * step-23 additions:
- *   - GoalPanel mounts whenever `goalState` is non-null;
- *   - Tab cycles focus between input ↔ swarm panel ↔ goal panel (only the
- *     panels that are visible are part of the cycle);
- *   - the slash handler `/goal` receives a `ReplGoalRuntime` that wraps
- *     `createGoal` + `runGoal` with the REPL's provider/model/cwd, so
- *     `cli/slashCommands/goal.ts` stays UI-only.
  */
-export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactElement {
+export function ChovyRepl({ provider: initialProvider, model: initialModel, initialMode }: Props): React.ReactElement {
   const { exit } = useApp();
+
+  const [provider, setProvider] = useState<ProviderId>(initialProvider);
+  const [model, setModel] = useState<string>(initialModel);
 
   const [messages, setMessages] = useState<UIMessage[]>(() => [{
     id: newId(),
     role: "system",
     content:
-      `chovy-code REPL · provider=${provider} · model=${model}\n` +
+      `chovy-code REPL · provider=${initialProvider} · model=${initialModel}\n` +
       "输入 /help 查看斜杠命令；Esc 中断运行；连按两次 Ctrl+C 退出；Shift+Enter 换行。",
   }]);
   const [busy, setBusy] = useState(false);
@@ -105,6 +101,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     ctxUsedTokens: 0,
     ctxTotalTokens: 0,
   });
+
+  const [settingsTab, setSettingsTab] = useState<"none" | "providers" | "models">("none");
 
   const cancelledRef = useRef(false);
   const ctrlCArmedRef = useRef(false);
@@ -411,7 +409,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
 
   const configRuntime: ReplConfigRuntime = useMemo(() => ({
     run: async (): Promise<void> => {
-      await runConfigWizard();
+      // Config wizard was removed.
     },
   }), []);
 
@@ -693,6 +691,21 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     goalAcRef.current?.abort();
   }, []);
 
+  if (settingsTab !== "none") {
+    return (
+      <SettingsScreen
+        initialTab={settingsTab}
+        onClose={() => {
+          resetConfigCache();
+          const cfg = loadConfig();
+          setProvider(cfg.provider);
+          if (cfg.model) setModel(cfg.model);
+          setSettingsTab("none");
+        }}
+      />
+    );
+  }
+
   return (
     <Box flexDirection="column">
       <HeaderBar
@@ -763,6 +776,9 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
           onSubmit={send}
           onCancel={onCancel}
           onCtrlC={onCtrlC}
+          onCtrlS={() => setSettingsTab("providers")}
+          onCtrlM={() => setSettingsTab("models")}
+          onCtrlP={() => setSettingsTab("providers")}
         />
       </Box>
       {focus !== "input" ? (

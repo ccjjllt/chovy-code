@@ -18,12 +18,18 @@ import { chovyConfigPath } from "./home.js";
 
 const PROVIDER_IDS = [
   "openai",
-  "anthropic",
-  "gemini",
   "deepseek",
-  "minimax",
-  "glm",
+  "zai",
+  "zhipu",
   "kimi",
+  "minimax",
+  "alibaba",
+  "openai",
+  "anthropic",
+  "google",
+  "xai",
+  "siliconflow",
+  "stepfun",
 ] as const;
 
 const PERMISSION_MODES = [
@@ -51,6 +57,11 @@ const ContextSchema = z.object({
   reserveTokens: z.number().int().min(0).default(2048),
 });
 
+const CustomModelSchema = z.object({
+  id: z.string(),
+  contextWindow: z.number().int().min(1).optional(),
+});
+
 const ConfigSchema = z.object({
   provider: z.enum(PROVIDER_IDS).default("openai"),
   model: z.string().optional(),
@@ -61,6 +72,7 @@ const ConfigSchema = z.object({
   swarm: SwarmSchema.default({}),
   memory: MemorySchema.default({}),
   context: ContextSchema.default({}),
+  customModels: z.record(z.enum(PROVIDER_IDS), z.array(CustomModelSchema)).default({}),
 });
 
 export type ChovyConfig = z.infer<typeof ConfigSchema>;
@@ -79,6 +91,7 @@ export type PartialConfig = {
   swarm?: Partial<ChovyConfig["swarm"]>;
   memory?: Partial<ChovyConfig["memory"]>;
   context?: Partial<ChovyConfig["context"]>;
+  customModels?: Record<string, { id: string; contextWindow?: number }[]>;
 };
 
 // ---------------------------------------------------------------------------
@@ -195,7 +208,7 @@ function mergeLayer(base: PartialConfig, over: PartialConfig): PartialConfig {
     const v = over[key];
     if (v === undefined) continue;
     if (
-      (key === "swarm" || key === "memory" || key === "context") &&
+      (key === "swarm" || key === "memory" || key === "context" || key === "customModels") &&
       typeof v === "object" &&
       v !== null
     ) {

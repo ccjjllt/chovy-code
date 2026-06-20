@@ -129,7 +129,7 @@ console.log("=== Step-27 context-monitor smoke ===\n");
     `hard=${t1.hard}`,
   );
 
-  const t2 = thresholds("gemini-2.5-pro", "gemini", cfg, {});
+  const t2 = thresholds("gemini-2.5-pro", "kimi", cfg, {});
   check(
     "1d. gemini window=1_000_000",
     t2.ctxWindow === 1_000_000,
@@ -326,7 +326,7 @@ console.log("=== Step-27 context-monitor smoke ===\n");
     threadId: "t1",
   });
   const m2 = createContextMonitor({
-    providerId: "gemini",
+    providerId: "kimi",
     model: "gemini-2.5-pro",
     cfg,
     cwd: process.cwd(),

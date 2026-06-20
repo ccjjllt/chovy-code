@@ -2,13 +2,18 @@ import type { ChatCompletion, ChatMessage } from "./messages.js";
 
 /** Identifiers for every provider chovy-code knows how to talk to. */
 export type ProviderId =
+  | "deepseek"
+  | "zai"
+  | "zhipu"
+  | "kimi"
+  | "minimax"
+  | "alibaba"
   | "openai"
   | "anthropic"
-  | "gemini"
-  | "deepseek"
-  | "minimax"
-  | "glm"
-  | "kimi";
+  | "google"
+  | "xai"
+  | "siliconflow"
+  | "stepfun";
 
 /**
  * Capability matrix (PCM — Provider Capability Matrix). Declared per

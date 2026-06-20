@@ -111,14 +111,12 @@ function mergeAdjacentSystem(msgs: ChatMessage[]): ChatMessage[] {
  */
 function providerAcceptsReasoning(provider: ProviderId): boolean {
   switch (provider) {
-    case "anthropic":
-      return true;
     case "openai":
       return true; // o-series silently swallow if not requested
-    case "gemini":
+    case "deepseek":
       return true;
     default:
-      // DeepSeek / GLM / Kimi / MiniMax — strip until step-17 verifies.
+      // GLM / Kimi / MiniMax / Zai / Zhipu / Alibaba — strip until step-17 verifies.
       return false;
   }
 }

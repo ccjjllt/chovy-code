@@ -46,12 +46,12 @@ const PROMPT_MAX = 100;
 
 const providerEnum = z.enum([
   "openai",
-  "anthropic",
-  "gemini",
   "deepseek",
-  "minimax",
-  "glm",
+  "zai",
+  "zhipu",
   "kimi",
+  "minimax",
+  "alibaba",
 ]);
 
 const promptSchema = z.object({

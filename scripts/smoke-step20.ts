@@ -79,7 +79,7 @@ const countingSink: TelemetrySink = {
 };
 setTelemetrySink(countingSink);
 
-const PROVIDERS: ProviderId[] = ["openai", "anthropic", "gemini", "deepseek"];
+const PROVIDERS: ProviderId[] = ["openai", "zai", "kimi", "deepseek"];
 
 function makeParentCtx(extra: Partial<ParentRuntimeCtx> = {}): ParentRuntimeCtx {
   return {
@@ -226,8 +226,8 @@ function installStubs(
   _resetSubAgentPoolForTesting();
   const restore = installStubs({
     openai: makeStubProvider("ok", "openai"),
-    anthropic: makeStubProvider("ok", "anthropic"),
-    gemini: makeStubProvider("ok", "gemini"),
+    zai: makeStubProvider("ok", "zai"),
+    kimi: makeStubProvider("ok", "kimi"),
     deepseek: makeStubProvider("ok", "deepseek"),
   });
 
@@ -239,8 +239,8 @@ function installStubs(
     {
       prompts: [
         { id: "a", prompt: "task a", provider: "openai", role: "explore" },
-        { id: "b", prompt: "task b", provider: "anthropic", role: "plan" },
-        { id: "c", prompt: "task c", provider: "gemini", role: "verify" },
+        { id: "b", prompt: "task b", provider: "zai", role: "plan" },
+        { id: "c", prompt: "task c", provider: "kimi", role: "verify" },
         { id: "d", prompt: "task d", provider: "deepseek", role: "critic" },
       ],
       parallelism: 4,
@@ -399,16 +399,16 @@ function installStubs(
   _resetSubAgentPoolForTesting();
   const restore = installStubs({
     openai: makeStubProvider("ok", "openai"),
-    anthropic: makeStubProvider("fail", "anthropic"),
-    gemini: makeStubProvider("ok", "gemini"),
+    zai: makeStubProvider("fail", "zai"),
+    kimi: makeStubProvider("ok", "kimi"),
   });
 
   const out = await dispatch(
     {
       prompts: [
         { id: "a", prompt: "ok a", provider: "openai" },
-        { id: "b", prompt: "fail b", provider: "anthropic" },
-        { id: "c", prompt: "ok c", provider: "gemini" },
+        { id: "b", prompt: "fail b", provider: "zai" },
+        { id: "c", prompt: "ok c", provider: "kimi" },
       ],
       parallelism: 3,
     },

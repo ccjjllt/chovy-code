@@ -12,6 +12,9 @@ interface Props {
   onCancel?(): void;
   /** Ctrl+C — REPL decides whether to interrupt or exit. */
   onCtrlC?(): void;
+  onCtrlS?(): void;
+  onCtrlM?(): void;
+  onCtrlP?(): void;
   prompt?: string;
 }
 
@@ -35,6 +38,9 @@ export function InputBox({
   onSubmit,
   onCancel,
   onCtrlC,
+  onCtrlS,
+  onCtrlM,
+  onCtrlP,
   prompt = "❯",
 }: Props): React.ReactElement {
   const [value, setValue] = useState("");
@@ -51,6 +57,9 @@ export function InputBox({
 
   useInput((input, key) => {
     if (key.ctrl && input === "c") { onCtrlC?.(); return; }
+    if (key.ctrl && input === "s") { onCtrlS?.(); return; }
+    if (key.ctrl && input === "m") { onCtrlM?.(); return; }
+    if (key.ctrl && input === "p") { onCtrlP?.(); return; }
     if (key.escape) {
       if (disabled) onCancel?.();
       else { setValue(""); setCursor(0); setHistoryIdx(null); }

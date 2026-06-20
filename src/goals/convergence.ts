@@ -342,18 +342,15 @@ function smallModelFor(p: ProviderId): string | undefined {
   switch (p) {
     case "openai":
       return "gpt-4o-mini";
-    case "anthropic":
-      return "claude-3-5-haiku-latest";
-    case "gemini":
-      return "gemini-2.5-flash";
     case "deepseek":
       return "deepseek-chat";
-    case "glm":
-      return "glm-4.5-flash";
     case "kimi":
       return "moonshot-v1-8k";
     case "minimax":
-      // MiniMax doesn't have a clearly cheaper SKU; reuse default.
+      return undefined;
+    case "zai":
+    case "zhipu":
+    case "alibaba":
       return undefined;
     default:
       return undefined;

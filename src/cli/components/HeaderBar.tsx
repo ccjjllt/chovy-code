@@ -82,6 +82,10 @@ export function HeaderBar({ mode, provider, model, budget, swarm }: Props): Reac
   const ctxBold = budget.pressureLevel === "hard";
   const tail = `  $${cost}${swarmChip}`;
 
+  const usedK = (budget.ctxUsedTokens / 1000).toFixed(1);
+  const totalK = Math.round(budget.ctxTotalTokens / 1000);
+  const ctxLabel = `ctx ${usedK}k / ${totalK}k (${ratio}%)`;
+
   return (
     <Box
       justifyContent="space-between"
@@ -95,9 +99,9 @@ export function HeaderBar({ mode, provider, model, budget, swarm }: Props): Reac
       </Box>
       <Box>
         {pressureColor ? (
-          <Text color={pressureColor} bold={ctxBold}>{`ctx ${ratio}%`}</Text>
+          <Text color={pressureColor} bold={ctxBold}>{ctxLabel}</Text>
         ) : (
-          <Text dimColor>{`ctx ${ratio}%`}</Text>
+          <Text dimColor>{ctxLabel}</Text>
         )}
         <Text dimColor>{tail}</Text>
       </Box>

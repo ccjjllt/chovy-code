@@ -118,10 +118,10 @@ const JUDGE_MAX_TOKENS = 2048;
  */
 const PROVIDER_FALLBACK: ReadonlyArray<{ provider: ProviderId; model: string }> = [
   { provider: "kimi", model: "moonshot-v1-128k" },
-  { provider: "glm", model: "glm-4.6" },
   { provider: "deepseek", model: "deepseek-chat" },
-  { provider: "gemini", model: "gemini-2.5-pro" },
-  { provider: "anthropic", model: "claude-sonnet-4-5" },
+  { provider: "alibaba", model: "qwen-max" },
+  { provider: "zhipu", model: "glm-4.6" },
+  { provider: "openai", model: "gpt-4o" },
 ];
 
 // ── main entry ─────────────────────────────────────────────────────────────

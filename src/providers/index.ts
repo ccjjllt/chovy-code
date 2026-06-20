@@ -1,27 +1,13 @@
 import { registerProvider } from "./registry.js";
-import { openaiProvider } from "./openai.js";
-import { anthropicProvider } from "./anthropic.js";
-import { geminiProvider } from "./gemini.js";
-import { deepseekProvider } from "./deepseek.js";
-import { glmProvider } from "./glm.js";
-import { kimiProvider } from "./kimi.js";
-import { minimaxProvider } from "./minimax.js";
+import { chovyProviderInstances } from "./chovyProvider.js";
 
 /**
- * Step-17 wiring.
- *
- * All seven providers ship real adapters now (the step-06 scaffolds are
- * gone). Registration order is alphabetical for stable diffs; the
- * registry uses a `Map` so order has no semantic effect.
+ * Step-17 wiring - migrated to Chovy providers.
  */
 
-registerProvider(anthropicProvider);
-registerProvider(deepseekProvider);
-registerProvider(geminiProvider);
-registerProvider(glmProvider);
-registerProvider(kimiProvider);
-registerProvider(minimaxProvider);
-registerProvider(openaiProvider);
+for (const provider of chovyProviderInstances) {
+  registerProvider(provider);
+}
 
 // Public surface ────────────────────────────────────────────────────────────
 export { getProvider, listProviders, registerProvider, _unregisterProviderForTesting } from "./registry.js";
@@ -41,3 +27,4 @@ export {
   parseJsonModeToolCalls,
 } from "./toolFormat.js";
 export { parseSSE, mergeDelta, finalizeCompletion, newAccumulator } from "./streaming.js";
+export { chovyProviders, allChovyModels, popularModels } from "./chovyModels.js";
