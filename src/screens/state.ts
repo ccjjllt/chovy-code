@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { closePalette } from "../palette/state.js";
+import { _focusStore, setModality } from "../cli/state/focusStore.js";
 
 export type SettingsCategory = "general" | "provider" | "model" | "theme" | "language" | "keybind" | "advanced";
 
@@ -37,14 +37,19 @@ const _store = createStore<SettingsState>({
   dirty: {},
 });
 
+_focusStore.subscribe(() => {
+  if (_focusStore.getState().modality !== "settings" && _store.getState().open) {
+    _store.setState(s => ({ ...s, open: false, highlightFieldId: undefined }));
+  }
+});
+
 export function useSettingsState(): SettingsState {
   return useSyncExternalStore(_store.subscribe, _store.getState);
 }
 
 // Coordinate with palette (step-48 risk handling)
 export function openSettings(fieldId?: string) {
-  // If palette is open, close it
-  closePalette();
+  setModality("settings");
 
   _store.setState((s) => {
     let nextCategory = s.category;
@@ -66,6 +71,7 @@ export function openSettings(fieldId?: string) {
 }
 
 export function closeSettings(opts?: { discard?: boolean }) {
+  setModality(undefined);
   _store.setState((s) => {
     const next = { ...s, open: false, highlightFieldId: undefined };
     if (opts?.discard) {

@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text, useInput } from "ink";
 import type { GoalState } from "../../types/index.js";
+import { useTheme } from "../../theme/index.js";
 
 /**
  * GoalPanel — Ink UI panel for the active /goal (step-23).
@@ -42,6 +43,8 @@ export function GoalPanel({
   onCancel,
   onToggleDetails,
 }: GoalPanelProps): React.ReactElement {
+  const theme = useTheme();
+
   // Hotkeys only active when focused — otherwise the InputBox / SwarmPanel
   // own the keyboard. Tab switching lives in the REPL component.
   useInput(
@@ -73,18 +76,18 @@ export function GoalPanel({
           ? "red"
           : "gray";
 
-  const headerColor = focused ? "magenta" : "blue";
+  const headerColor = focused ? theme.accent : "blue";
 
   return (
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor={headerColor}
+      borderColor={headerColor as any}
       paddingX={1}
     >
       <Box>
-        <Text color={headerColor} bold>{`/goal `}</Text>
-        <Text>{truncate(goal.objective, 60)}</Text>
+        <Text color={focused ? undefined : headerColor} bold inverse={focused}>{`/goal `}</Text>
+        <Text inverse={focused} color={focused ? undefined : undefined}>{truncate(goal.objective, 60)}</Text>
       </Box>
       <Box>
         <Text dimColor>
@@ -103,9 +106,6 @@ export function GoalPanel({
       </Box>
       <Box>
         <Text dimColor>{`[p] pause  [c] cancel  [Enter] details`}</Text>
-        {focused ? (
-          <Text color="magenta" dimColor>{"  ◀ focused"}</Text>
-        ) : null}
       </Box>
     </Box>
   );

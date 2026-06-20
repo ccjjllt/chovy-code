@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type ReactElement } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import { useTerminalCaps } from "../tui/capabilities.js";
 import { getCompanionStateMachine } from "./stateMachine.js";
 import type { CompanionState } from "./types.js";
@@ -12,6 +12,7 @@ import { resolveGifPath } from "./skin.js";
 import { useCompanionPrefs } from "./index.js";
 import { t } from "../i18n/index.js";
 import { companionBus } from "./stateBus.js";
+import { setSkin } from "./prefs.js";
 import { PetHearts } from "./pet.js";
 
 function NarrowFace({ state, reaction }: { state: CompanionState; reaction?: string }) {
@@ -25,8 +26,9 @@ function NarrowFace({ state, reaction }: { state: CompanionState; reaction?: str
   );
 }
 
-export function CompanionHost({ cwd, reservedCols }: { cwd: string; reservedCols?: number }): ReactElement | null {
+export function CompanionHost({ cwd, reservedCols, focused }: { cwd: string; reservedCols?: number; focused?: boolean }): ReactElement | null {
   const caps = useTerminalCaps();
+  const theme = useTheme();
   const sm = getCompanionStateMachine();
   const [state, setState] = useState<CompanionState>(sm.current());
   const prefs = useCompanionPrefs();
@@ -71,6 +73,21 @@ export function CompanionHost({ cwd, reservedCols }: { cwd: string; reservedCols
     };
   }, [reaction]);
 
+  useInput((_input, key) => {
+    if (key.upArrow || key.downArrow) {
+      const skins = ["chovy", "cat", "dog", "fox", "owl"];
+      const currentSkin = prefs.skin || "chovy";
+      const idx = skins.indexOf(currentSkin);
+      const nextIdx = (idx + (key.upArrow ? -1 : 1) + skins.length) % skins.length;
+      setSkin(skins[nextIdx]!);
+      return;
+    }
+    if (key.return) {
+      companionBus.emit({ type: "pet" });
+      return;
+    }
+  }, { isActive: !!focused });
+
   if (prefs.muted || !prefs.visible || process.env["CHOVY_NO_COMPANION"] === "1") return null;
   if (caps.cols < 60) return <NarrowFace state={state} reaction={reaction} />;
   
@@ -82,7 +99,7 @@ export function CompanionHost({ cwd, reservedCols }: { cwd: string; reservedCols
   const gifPath = resolveGifPath(state, prefs.skin, cwd);
 
   return (
-    <Box flexDirection="row" alignItems="flex-end" paddingX={1} flexShrink={0}>
+    <Box flexDirection="row" alignItems="flex-end" paddingX={1} flexShrink={0} borderStyle={focused ? "round" : undefined} borderColor={focused ? theme.accent : undefined}>
       {reaction ? <SpeechBubble text={reaction} state={state}/> : null}
       <Box flexDirection="column" alignItems="center">
         <PetHearts active={petActive} onDone={() => setPetActive(false)} />

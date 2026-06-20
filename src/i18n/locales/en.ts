@@ -75,5 +75,15 @@ export const en = {
     slash: {
       help: "Companion commands"
     }
+  },
+  focus: {
+    hint: "Focus: {{ target }} · Tab to cycle · Esc to return to input",
+    target: {
+      swarm: "Swarm Panel",
+      goal: "Goal Panel",
+      companion: "Companion",
+      palette: "Command Palette",
+      settings: "Settings",
+    }
   }
 } as const;

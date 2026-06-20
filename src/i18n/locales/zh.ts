@@ -75,5 +75,15 @@ export const zh = {
     slash: {
       help: "吉祥物命令"
     }
+  },
+  focus: {
+    hint: "当前焦点：{{ target }} · Tab 切换 · Esc 回到输入",
+    target: {
+      swarm: "Swarm 面板",
+      goal: "Goal 面板",
+      companion: "吉祥物",
+      palette: "命令面板",
+      settings: "设置",
+    }
   }
 } as const;

@@ -19,8 +19,10 @@ import { SwarmPanel } from "./components/SwarmPanel.js";
 import { GoalPanel } from "./components/GoalPanel.js";
 import { InputBox } from "./inputBox.js";
 import { useTerminalCaps } from "../tui/capabilities.js";
-import { mountCompanion, CompanionHost, companionReservedColumns, type CompanionHandle } from "../companion/index.js";
+import { mountCompanion, CompanionHost, companionReservedColumns, type CompanionHandle, useCompanionPrefs } from "../companion/index.js";
 import { useSwarmState, swarmCounts } from "./state/swarmStore.js";
+import { useFocusStore, cycleFocus, setModality, setHidden, setFocus } from "./state/focusStore.js";
+import { FocusHint } from "./components/FocusHint.js";
 import {
   slashCommands,
   listSlashEntries,
@@ -221,29 +223,28 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
 
   // 3-way focus cycle: "input" → "swarm" → "goal" → "input". Only visible
   // panels participate. Hotkey: Tab when not busy.
-  type Focus = "input" | "swarm" | "goal";
-  const [focus, setFocus] = useState<Focus>("input");
+  const { current: focus } = useFocusStore();
 
-  useInput(
-    (_input, key) => {
-      if (!key.tab) return;
-      if (busy) return;
-      const ring: Focus[] = ["input"];
-      if (showSwarmPanel) ring.push("swarm");
-      if (showGoalPanel) ring.push("goal");
-      if (ring.length <= 1) return;
-      const idx = ring.indexOf(focus);
-      const next = ring[(idx + 1) % ring.length] ?? "input";
-      setFocus(next);
-    },
-    { isActive: !busy },
-  );
+  useKeybinding("focus.next", () => cycleFocus(1),  { isActive: !busy });
+  useKeybinding("focus.prev", () => cycleFocus(-1), { isActive: !busy });
 
-  // Drop focus back to input if the panel we were focused on disappears.
+  const companionPrefs = useCompanionPrefs();
+
+  useInput((_input, key) => {
+    if (key.escape && focus !== "input") {
+      setModality(undefined);
+      setFocus("input");
+    }
+  }, { isActive: !busy });
+
+  // Sync hidden state for visibility-aware ring
   useEffect(() => {
-    if (focus === "swarm" && !showSwarmPanel) setFocus("input");
-    if (focus === "goal" && !showGoalPanel) setFocus("input");
-  }, [focus, showSwarmPanel, showGoalPanel]);
+    setHidden({
+      swarm: !showSwarmPanel,
+      goal: !showGoalPanel,
+      companion: process.env["CHOVY_NO_COMPANION"] === "1" || companionPrefs.muted || !companionPrefs.visible,
+    });
+  }, [showSwarmPanel, showGoalPanel, companionPrefs.muted, companionPrefs.visible]);
 
   useKeybinding("buddy.pet", () => {
     companionRef.current?.pet();
@@ -864,8 +865,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
               focused={focus === "swarm"}
               onClose={() => setFocus("input")}
               onGoalToggle={() => {
-                // Legacy hook from the swarm panel (predates step-23). Toggle
-                // focus to the goal panel if one is active, else no-op.
+                if (showGoalPanel && goalState?.status === "active") goalAcRef.current?.abort();
                 if (showGoalPanel) setFocus("goal");
               }}
             />
@@ -899,6 +899,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
 
         <Box marginTop={1} flexDirection="row" alignItems="flex-end">
           <Box flexGrow={1} flexDirection="column" width={caps.cols - companionReservedColumns(caps.cols, speaking)}>
+            <FocusHint />
             <InputBox
               disabled={busy}
               history={history}
@@ -907,11 +908,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
               onCtrlC={onCtrlC}
           />
         </Box>
-        <CompanionHost cwd={process.cwd()} reservedCols={companionReservedColumns(caps.cols, speaking)} />
+        <CompanionHost cwd={process.cwd()} reservedCols={companionReservedColumns(caps.cols, speaking)} focused={focus === "companion"} />
       </Box>
-      {focus !== "input" ? (
-        <Text dimColor>{`  (panel focused: ${focus} — Tab to cycle)`}</Text>
-      ) : null}
       </Box>
     </Box>
   );

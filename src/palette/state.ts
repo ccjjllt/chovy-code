@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { _focusStore, setModality } from "../cli/state/focusStore.js";
 
 export interface PaletteCommand {
   id: string;
@@ -46,15 +47,23 @@ export const _store = createStore<PaletteState>({
   selectedIndex: 0,
 });
 
+_focusStore.subscribe(() => {
+  if (_focusStore.getState().modality !== "palette" && _store.getState().open) {
+    _store.setState(s => ({ ...s, open: false }));
+  }
+});
+
 export function usePaletteState(): PaletteState {
   return useSyncExternalStore(_store.subscribe, _store.getState);
 }
 
 export function openPalette() {
+  setModality("palette");
   _store.setState((s) => ({ ...s, open: true, query: "", rawQuery: "", selectedIndex: 0 }));
 }
 
 export function closePalette() {
+  setModality(undefined);
   _store.setState((s) => ({ ...s, open: false }));
 }
 

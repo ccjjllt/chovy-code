@@ -3,6 +3,7 @@ import { Box, Text, useInput } from "ink";
 import type { SubAgentHandle } from "../../types/index.js";
 import { getSubAgentPool } from "../../agent/index.js";
 import { useSwarmTick } from "../state/swarmStore.js";
+import { useTheme } from "../../theme/index.js";
 import { AgentRow } from "./AgentRow.js";
 import { AgentDetail } from "./AgentDetail.js";
 import { HotkeyBar } from "./HotkeyBar.js";
@@ -61,6 +62,8 @@ export function SwarmPanel({
   onClose,
   onGoalToggle,
 }: Props): React.ReactElement {
+  const theme = useTheme();
+  
   // Sort: active (queued/running/paused) first by spawnedAt, then terminal
   // by finishedAt. Stable so selection doesn't jump as agents complete.
   const sorted = useMemo(() => sortForDisplay(agents), [agents]);
@@ -172,9 +175,9 @@ export function SwarmPanel({
   }
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={focused ? theme.accent : theme.borderStyle as any} paddingX={1}>
       <Box justifyContent="space-between">
-        <Text bold color="cyan">{title}</Text>
+        <Text bold inverse={focused} color={focused ? undefined : "cyan"}>{title}</Text>
         <Text dimColor>{budgetText}</Text>
       </Box>
 
