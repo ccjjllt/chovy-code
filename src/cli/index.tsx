@@ -56,6 +56,8 @@ interface ConfigCommandFlags {
   model?: string;
   key?: string;
   permissionMode?: string;
+  theme?: string;
+  lang?: string;
   nonInteractive?: boolean;
 }
 
@@ -129,7 +131,7 @@ function assertProviderReady(provider: ProviderId): void {
 }
 
 function startRepl(ctx: ResolvedCtx): void {
-  if (!process.stdin.isTTY) {
+  if (!process.stdin.isTTY && !process.env["CHOVY_FORCE_TTY"]) {
     logger.error(new ChovyError(
       "CONFIG_INVALID",
       'interactive REPL requires a TTY; run `chovy chat "..."` for non-interactive use.',
@@ -541,6 +543,8 @@ program
   .option("--model <id>", "model id; omit or pass an empty value to use provider default")
   .option("--permission-mode <mode>", `permission mode: ${PERMISSION_MODES.join("|")}`)
   .option("--key <value>", "API key to write into ~/.chovy/secrets/<provider>")
+  .option("--theme <name>", "set theme")
+  .option("--lang <locale>", "set locale")
   .option("--non-interactive", "do not prompt; only use supplied flags and existing config")
   .action(async (options: ConfigCommandFlags, ...args: unknown[]) => {
     const command = commandFromActionArgs(args);
@@ -551,6 +555,8 @@ program
       model: all.model ?? options.model,
       key: all.key ?? options.key,
       permissionMode: all.permissionMode ?? options.permissionMode,
+      theme: all.theme ?? options.theme,
+      lang: all.lang ?? options.lang,
       nonInteractive: all.nonInteractive ?? options.nonInteractive,
     });
   });

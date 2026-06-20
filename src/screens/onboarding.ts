@@ -12,6 +12,7 @@ export interface OnboardingState {
   buddyPettedCount: number;
   langSwitchedAt?: number;
   lastSeenVersion?: string;
+  conhostWarnedAt?: number;
 }
 
 const DEFAULT_STATE: OnboardingState = {
@@ -68,7 +69,7 @@ export function saveOnboarding(s: OnboardingState): void {
 }
 
 export function recordEvent(
-  kind: "palette" | "settings" | "buddy" | "lang" | "firstAction",
+  kind: "palette" | "settings" | "buddy" | "lang" | "firstAction" | "conhostWarned",
   currentVersion: string
 ): void {
   const s = loadOnboarding();
@@ -96,6 +97,12 @@ export function recordEvent(
     case "firstAction":
       if (!s.firstActionAt) {
         s.firstActionAt = Date.now();
+        changed = true;
+      }
+      break;
+    case "conhostWarned":
+      if (!s.conhostWarnedAt) {
+        s.conhostWarnedAt = Date.now();
         changed = true;
       }
       break;

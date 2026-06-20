@@ -60,6 +60,11 @@ const steps: DemoStep[] = [
     command: ["bun", cli, "goal", "--help"],
     expect: [/--max-rounds[\s\S]*--budget-usd/],
   },
+  {
+    name: "TUI Innovations: Theme, Locale, Mascot cache, Settings, Coverage",
+    command: ["bun", "run", "smoke:tui"],
+    expect: [/All smoke tests passed/],
+  }
 ];
 
 try {

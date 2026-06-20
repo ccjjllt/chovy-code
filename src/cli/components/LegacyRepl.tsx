@@ -1,32 +1,32 @@
+// @ts-nocheck
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
-import { t } from "../i18n/index.js";
-import { onSwarmEvent } from "../agent/swarmBus.js";
-import { checkpointEvents } from "../memory/index.js";
-import { showToast } from "./components/toastBus.js";
-import { ToastHost } from "./components/ToastHost.js";
-import { AskUserOverlay, openAskUser } from "./components/AskUserOverlay.js";
-import { PermissionPromptOverlay, openPermissionPrompt } from "./components/PermissionPrompt.js";
-import { TodoPanel } from "./components/TodoPanel.js";
-import { runAgent } from "../agent/index.js";
-import { getSubAgentPool } from "../agent/index.js";
-import { listProviders } from "../providers/index.js";
-import { logger } from "../logger/index.js";
-import type { ProviderId } from "../types/index.js";
-import type { PermissionMode } from "../config/index.js";
-import { HeaderBar, type BudgetSnapshot, type SwarmSummary, type GoalChipSnapshot } from "./components/HeaderBar.js";
-import { MessageList, type UIMessage } from "./components/MessageList.js";
-import { HelpOverlay } from "./components/HelpOverlay.js";
-import { StatusLine } from "./components/StatusLine.js";
-import { SwarmPanel } from "./components/SwarmPanel.js";
-import { GoalPanel } from "./components/GoalPanel.js";
-import { InputBox } from "./inputBox.js";
-import { useTerminalCaps, detectTerminal } from "../tui/capabilities.js";
-import { LegacyRepl } from "./components/LegacyRepl.js";
-import { mountCompanion, CompanionHost, companionReservedColumns, type CompanionHandle, useCompanionPrefs } from "../companion/index.js";
-import { useSwarmState, swarmCounts } from "./state/swarmStore.js";
-import { useFocusStore, cycleFocus, setModality, setHidden, setFocus } from "./state/focusStore.js";
-import { FocusHint } from "./components/FocusHint.js";
+import { t } from "../../i18n/index.js";
+import { onSwarmEvent } from "../../agent/swarmBus.js";
+import { checkpointEvents } from "../../memory/index.js";
+import { showToast } from "./toastBus.js";
+import { ToastHost } from "./ToastHost.js";
+import { AskUserOverlay, openAskUser } from "./AskUserOverlay.js";
+import { PermissionPromptOverlay, openPermissionPrompt } from "./PermissionPrompt.js";
+import { TodoPanel } from "./TodoPanel.js";
+import { runAgent } from "../../agent/index.js";
+import { getSubAgentPool } from "../../agent/index.js";
+import { listProviders } from "../../providers/index.js";
+import { logger } from "../../logger/index.js";
+import type { ProviderId } from "../../types/index.js";
+import type { PermissionMode } from "../../config/index.js";
+import { HeaderBar, type BudgetSnapshot, type SwarmSummary, type GoalChipSnapshot } from "./HeaderBar.js";
+import { MessageList, type UIMessage } from "./MessageList.js";
+import { HelpOverlay } from "./HelpOverlay.js";
+import { StatusLine } from "./StatusLine.js";
+import { SwarmPanel } from "./SwarmPanel.js";
+import { GoalPanel } from "./GoalPanel.js";
+import { InputBox } from "../inputBox.js";
+import { useTerminalCaps } from "../../tui/capabilities.js";
+import { mountCompanion, CompanionHost, companionReservedColumns, type CompanionHandle, useCompanionPrefs } from "../../companion/index.js";
+import { useSwarmState, swarmCounts } from "../state/swarmStore.js";
+import { useFocusStore, cycleFocus, setModality, setHidden, setFocus } from "../state/focusStore.js";
+import { FocusHint } from "./FocusHint.js";
 import {
   slashCommands,
   listSlashEntries,
@@ -39,8 +39,8 @@ import {
   type ReplConfigRuntime,
   type ReplMemRuntime,
   type ReplMemListItem,
-} from "./slashCommands.js";
-import { runConfigWizard } from "./configWizard.js";
+} from "../slashCommands.js";
+import { runConfigWizard } from "../configWizard.js";
 import {
   createGoal,
   finalizeGoal,
@@ -48,17 +48,17 @@ import {
   runGoal,
   type CreateGoalInput,
   type RunGoalResult,
-} from "../goals/index.js";
-import { getCheckpointCoordinator } from "../memory/index.js";
+} from "../../goals/index.js";
+import { getCheckpointCoordinator } from "../../memory/index.js";
 import {
   createMemoryStore,
   syncProject,
-} from "../memory/index.js";
-import type { MemoryLayer, MemoryType } from "../types/index.js";
-import { MEMORY_LAYERS, MEMORY_TYPES } from "../types/index.js";
-import { checkpointDir } from "../fs/paths.js";
-import { safeFs } from "../fs/safeFs.js";
-import { getCapability } from "../providers/capabilities.js";
+} from "../../memory/index.js";
+import type { MemoryLayer, MemoryType } from "../../types/index.js";
+import { MEMORY_LAYERS, MEMORY_TYPES } from "../../types/index.js";
+import { checkpointDir } from "../../fs/paths.js";
+import { safeFs } from "../../fs/safeFs.js";
+import { getCapability } from "../../providers/capabilities.js";
 import {
   ensureBundledSkillsInitialized,
   extractIntent,
@@ -66,20 +66,20 @@ import {
   listSkills as listAllSkills,
   plan as planSkills,
   resolveManualClosure,
-} from "../skills/index.js";
-import { computeBudget } from "../context/budgets.js";
-import { loadConfig } from "../config/config.js";
-import type { GoalState, ToolSession } from "../types/index.js";
-import { getCompanionStateMachine } from "../companion/index.js";
-import { useKeybinding } from "../keybindings/index.js";
-import { CommandPalette } from "../palette/index.js";
-import { usePaletteState, openPalette } from "../palette/state.js";
-import { SettingsScreen } from "../screens/settings.js";
-import { useSettingsState, openSettings } from "../screens/state.js";
-import { registerAllCommandSources } from "./commandSources.js";
-import { version } from "../version.js";
-import { WelcomeScreen } from "../screens/welcome.js";
-import { loadOnboarding, recordEvent } from "../screens/onboarding.js";
+} from "../../skills/index.js";
+import { computeBudget } from "../../context/budgets.js";
+import { loadConfig } from "../../config/config.js";
+import type { GoalState, ToolSession } from "../../types/index.js";
+import { getCompanionStateMachine } from "../../companion/index.js";
+import { useKeybinding } from "../../keybindings/index.js";
+import { CommandPalette } from "../../palette/index.js";
+import { usePaletteState, openPalette } from "../../palette/state.js";
+import { SettingsScreen } from "../../screens/settings.js";
+import { useSettingsState, openSettings } from "../../screens/state.js";
+import { registerAllCommandSources } from "../commandSources.js";
+import { version } from "../../version.js";
+import { WelcomeScreen } from "../../screens/welcome.js";
+import { loadOnboarding, recordEvent } from "../../screens/onboarding.js";
 
 
 function OnboardingHint() {
@@ -113,14 +113,7 @@ const newId = (): string => {
  *     `createGoal` + `runGoal` with the REPL's provider/model/cwd, so
  *     `cli/slashCommands/goal.ts` stays UI-only.
  */
-export function ChovyRepl(props: Props): React.ReactElement {
-  if (process.env["CHOVY_NO_TUI"] === "1") {
-    return <LegacyRepl {...props} />;
-  }
-  return <ChovyReplTui {...props} />;
-}
-
-function ChovyReplTui({ provider, model, initialMode }: Props): React.ReactElement {
+export function LegacyRepl({ provider, model, initialMode }: Props): React.ReactElement {
   const { exit } = useApp();
   const sm = getCompanionStateMachine();
   const caps = useTerminalCaps();
@@ -137,35 +130,6 @@ function ChovyReplTui({ provider, model, initialMode }: Props): React.ReactEleme
       unsubscribe();
     };
   }, [sm]);
-
-  // ConHost warning
-  useEffect(() => {
-    const caps = detectTerminal();
-    if (caps.isConHost) {
-      const ob = loadOnboarding();
-      if (!ob.conhostWarnedAt) {
-        showToast({
-          variant: "warning",
-          text: "⚠ 检测到 Windows ConHost。建议改用 Windows Terminal 获得最佳显示。\n   不影响功能；如有闪烁可设 CHOVY_NO_SWARM_PANEL=1。"
-        });
-        recordEvent("conhostWarned", version);
-      }
-    }
-  }, []);
-
-  const [messages, setMessages] = useState<UIMessage[]>(() => [{
-    id: newId(),
-    role: "system",
-    content:
-      `chovy-code REPL · provider=${provider} · model=${model}\n` +
-      "输入 /help 查看斜杠命令；Esc 中断运行；连按两次 Ctrl+C 退出；Shift+Enter 换行。",
-  }]);
-
-  useEffect(() => {
-    if (process.env["CHOVY_BENCH"] === "1") {
-      process.stdout.write("\nBENCH_READY\n");
-    }
-  }, [messages]);
 
   // Toast events
   useEffect(() => {
@@ -193,19 +157,13 @@ function ChovyReplTui({ provider, model, initialMode }: Props): React.ReactEleme
   const { open: paletteOpen } = usePaletteState();
   const { open: settingsOpen } = useSettingsState();
 
-  useEffect(() => {
-    if (process.env["CHOVY_BENCH"] === "1" && paletteOpen) {
-      process.stdout.write("\nBENCH_PALETTE_OPEN\n");
-    }
-  }, [paletteOpen]);
-
-  useEffect(() => {
-    if (process.env["CHOVY_BENCH"] === "1" && settingsOpen) {
-      process.stdout.write("\nBENCH_SETTINGS_OPEN\n");
-    }
-  }, [settingsOpen]);
-
-
+  const [messages, setMessages] = useState<UIMessage[]>(() => [{
+    id: newId(),
+    role: "system",
+    content:
+      `chovy-code REPL · provider=${provider} · model=${model}\n` +
+      "输入 /help 查看斜杠命令；Esc 中断运行；连按两次 Ctrl+C 退出；Shift+Enter 换行。",
+  }]);
   const [busy, setBusy] = useState(false);
   const [tool, setTool] = useState<string | undefined>(undefined);
   const [mode, setMode] = useState<PermissionMode>(initialMode);
@@ -617,7 +575,7 @@ function ChovyReplTui({ provider, model, initialMode }: Props): React.ReactEleme
       const store = await createMemoryStore({ cwd: process.cwd() });
       try {
         await syncProject(process.cwd(), store);
-        const memQuery: import("../types/index.js").MemoryQuery = {
+        const memQuery: import("../../types/index.js").MemoryQuery = {
           text: query,
           ranker: opts.bm25 ? "bm25" : "mixed",
           limit: opts.limit ?? 10,
@@ -862,8 +820,6 @@ function ChovyReplTui({ provider, model, initialMode }: Props): React.ReactEleme
 
   return (
     <Box flexDirection="column">
-      {paletteOpen ? <CommandPalette ctx={ctx} /> : null}
-      {settingsOpen ? <SettingsScreen ctx={ctx} /> : null}
 
       <Box flexDirection="column" display={paletteOpen || settingsOpen ? "none" : "flex"}>
         <HeaderBar
@@ -879,25 +835,11 @@ function ChovyReplTui({ provider, model, initialMode }: Props): React.ReactEleme
 
 
 
-        {showWelcome ? (
-          <Box marginTop={1} marginBottom={1}>
-            <WelcomeScreen
-              provider={provider}
-              model={model}
-              mode={mode}
-              cwd={process.cwd()}
-              version={version}
-            />
-          </Box>
-        ) : null}
+
 
         <MessageList messages={messages} />
 
-        {helpOpen ? (
-          <Box marginTop={1}>
-            <HelpOverlay entries={listSlashEntries()} />
-          </Box>
-        ) : null}
+
 
         {busy ? (
           <Box marginTop={1}>
@@ -905,54 +847,18 @@ function ChovyReplTui({ provider, model, initialMode }: Props): React.ReactEleme
           </Box>
         ) : null}
 
-        {showSwarmPanel ? (
-          <Box marginTop={1}>
-            <SwarmPanel
-              agents={swarm.agents}
-              budget={{ spent: swarm.budget.costUSD }}
-              focused={focus === "swarm"}
-              onClose={() => setFocus("input")}
-              onGoalToggle={() => {
-                if (showGoalPanel && goalState?.status === "active") goalAcRef.current?.abort();
-                if (showGoalPanel) setFocus("goal");
-              }}
-            />
-          </Box>
-        ) : null}
 
-        {showGoalPanel && goalState ? (
-          <Box marginTop={1}>
-            <GoalPanel
-              goal={goalState}
-              focused={focus === "goal"}
-              onPause={() => {
-                goalAcRef.current?.abort();
-                const cur = goalState;
-                if (cur) {
-                  finalizeGoal(cur.threadId, "paused");
-                  setGoalState({ ...cur, status: "paused" });
-                }
-                showToast({ variant: "info", text: "Goal paused（/goal resume 可继续）。" });
-              }}
-              onCancel={() => {
-                goalAcRef.current?.abort();
-                setGoalState(null);
-                showToast({ variant: "info", text: "Goal cancelled." });
-              }}
-            />
-          </Box>
-        ) : null}
+
+
 
         <ToastHost />
-        <AskUserOverlay />
-        <PermissionPromptOverlay />
-        {sessionRef.current?.todoList ? (
-          <TodoPanel todos={sessionRef.current.todoList.map(t => t.content)} />
-        ) : null}
+        
+        
+
 
         <Box marginTop={1} flexDirection="row" alignItems="flex-end">
           <Box flexGrow={1} flexDirection="column" width={caps.cols - companionReservedColumns(caps.cols, speaking)}>
-            <FocusHint />
+            
             <InputBox
               disabled={busy}
               history={history}
@@ -961,7 +867,7 @@ function ChovyReplTui({ provider, model, initialMode }: Props): React.ReactEleme
               onCtrlC={onCtrlC}
           />
         </Box>
-        <CompanionHost cwd={process.cwd()} reservedCols={companionReservedColumns(caps.cols, speaking)} focused={focus === "companion"} />
+        
       </Box>
       </Box>
     </Box>

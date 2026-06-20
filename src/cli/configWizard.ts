@@ -31,6 +31,8 @@ export interface ConfigWizardOptions {
   model?: string;
   key?: string;
   permissionMode?: string;
+  theme?: string;
+  lang?: string;
   nonInteractive?: boolean;
   stdin?: NodeJS.ReadStream;
   stdout?: NodeJS.WriteStream;
@@ -171,6 +173,8 @@ export async function runConfigWizard(
   }
 
   // Refresh caches to match pre-refactor behavior and construct result
+  if (opts.theme) await runFieldOnce("theme.name", opts.theme);
+  if (opts.lang) await runFieldOnce("i18n.locale", opts.lang);
   resetConfigCache();
   resetSecretsCache();
   const finalModel = model?.trim() || undefined;

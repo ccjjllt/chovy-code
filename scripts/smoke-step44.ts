@@ -1,7 +1,8 @@
 import { registerAllCommandSources } from "../src/cli/commandSources.js";
 import { listAllCommands, clearRegistryForTesting } from "../src/palette/registry.js";
+import { listSkills, ensureBundledSkillsInitialized } from "../src/skills/registry.js";
 
-async function main() {
+export async function getCommandCoverage() {
   clearRegistryForTesting();
 
   const dummyCtx: any = {
@@ -29,7 +30,6 @@ async function main() {
   const nonCounted: string[] = [];
 
   for (const cmd of commands) {
-    // If it's disabled or hidden, it's not counted towards the 72
     const isHidden = typeof cmd.hidden === 'function' ? cmd.hidden(dummyCtx) : !!cmd.hidden;
     const isEnabled = typeof cmd.enabled === 'function' ? cmd.enabled(dummyCtx) : cmd.enabled !== false;
     
@@ -47,22 +47,23 @@ async function main() {
     bySource[src] = (bySource[src] || 0) + 1;
   }
 
-  console.log(JSON.stringify({
+  // Ensure CSG graph counts
+  await ensureBundledSkillsInitialized();
+  const bundledSkills = listSkills().length;
+  
+  return {
     commandEquivalents,
     byGroup,
     bySource,
-    nonCounted
-  }, null, 2));
-
-  if (commandEquivalents < 72) {
-    console.error(`ERROR: commandEquivalents = ${commandEquivalents}, expected >= 72`);
-    process.exit(1);
-  } else {
-    console.log(`SUCCESS: commandEquivalents = ${commandEquivalents} >= 72`);
-  }
+    nonCounted,
+    bundledSkills,
+    sources: Object.keys(bySource)
+  };
 }
 
-main().catch(e => {
-  console.error(e);
-  process.exit(1);
-});
+export async function run() {
+  const coverage = await getCommandCoverage();
+  if (coverage.commandEquivalents < 72) {
+    throw new Error(`ERROR: commandEquivalents = ${coverage.commandEquivalents}, expected >= 72`);
+  }
+}

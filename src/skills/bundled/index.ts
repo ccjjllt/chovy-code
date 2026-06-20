@@ -1,3 +1,11 @@
+import { updateConfigSkill } from "./updateConfig.js";
+import { batchSkill } from "./batch.js";
+import { skillifySkill } from "./skillify.js";
+import { rememberSkill } from "./remember.js";
+import { simplifySkill } from "./simplify.js";
+import { stuckSkill } from "./stuck.js";
+import { debugSkill } from "./debug.js";
+import { verifySkill } from "./verify.js";
 /**
  * Bundled skills (step-29 — CSG).
  *
@@ -19,6 +27,14 @@ import { testSkill } from "./test.js";
 import { tsFixSkill } from "./tsFix.js";
 
 export function initBundledSkills(): void {
+  registerSkill(updateConfigSkill);
+  registerSkill(batchSkill);
+  registerSkill(skillifySkill);
+  registerSkill(rememberSkill);
+  registerSkill(simplifySkill);
+  registerSkill(stuckSkill);
+  registerSkill(debugSkill);
+  registerSkill(verifySkill);
   registerSkill(commitSkill);
   registerSkill(formatSkill);
   registerSkill(prSkill);
@@ -31,6 +47,14 @@ export function initBundledSkills(): void {
 // Re-export the individual definitions for callers (smoke / tests / future
 // loaders that want to override a specific skill).
 export {
+  updateConfigSkill,
+  batchSkill,
+  skillifySkill,
+  rememberSkill,
+  simplifySkill,
+  stuckSkill,
+  debugSkill,
+  verifySkill,
   commitSkill,
   formatSkill,
   prSkill,
