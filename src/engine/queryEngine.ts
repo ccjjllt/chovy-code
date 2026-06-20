@@ -138,6 +138,7 @@ export interface QueryRunOptions {
 
   // ToolContext extensions (CLI-supplied)
   askUser?: ToolContext["askUser"];
+  askPermission?: ToolContext["askPermission"];
   isInteractive?: ToolContext["isInteractive"];
 }
 
@@ -281,8 +282,9 @@ export class QueryEngine {
       sessionId,
       projectId: deriveProjectId(cwd),
       session,
+      isInteractive: opts.isInteractive,
       askUser: opts.askUser,
-      isInteractive,
+      askPermission: opts.askPermission,
       // step-26: identify the agent's role to tools so they can do
       // role-aware checks (e.g. checkpoint-writer's path sandbox).
       agentRole: role,

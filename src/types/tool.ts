@@ -247,8 +247,18 @@ export type AskUserAnswer = Record<string, string>;
  */
 export type AskUserFn = (
   questions: AskUserQuestionSpec[],
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ) => Promise<AskUserAnswer>;
+
+/**
+ * Permission prompt callback injected by the UI layer (step-30+).
+ */
+export type AskPermissionFn = (
+  toolName: string,
+  args: any,
+  reason: string,
+  signal?: AbortSignal,
+) => Promise<"allow" | "deny" | "always">;
 
 /**
  * Whether the host process can render an interactive prompt. The CLI sets
@@ -309,6 +319,12 @@ export interface ToolContext {
    * TODO step-22: `AskUserOverlay` supplies the real implementation.
    */
   askUser?: AskUserFn;
+
+  /**
+   * Interactive permission prompt callback. The PermissionEngine delegates
+   * to this when L6 requires a prompt.
+   */
+  askPermission?: AskPermissionFn;
 
   /**
    * Reports whether the host process can render an interactive prompt.

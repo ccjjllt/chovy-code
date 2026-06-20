@@ -3,6 +3,7 @@ import { Box, Text, useInput } from "ink";
 import { t } from "../../i18n/index.js";
 import { loadConfig } from "../../config/index.js";
 import { useTheme } from "../../theme/index.js";
+import { DiffView } from "./DiffView.js";
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -54,6 +55,18 @@ export function ToolCallBlock({ name, argsBrief, resultMeta, fullArgs, fullOutpu
           ) : null}
           {fullArgs ? <Text dimColor>Args: {fullArgs}</Text> : null}
           {fullOutput ? <Text dimColor>Output: {fullOutput.slice(0, 500)}{fullOutput.length > 500 ? "..." : ""}</Text> : null}
+          {fullArgs ? (
+            <DiffView 
+              toolName={name} 
+              args={(() => {
+                try {
+                  return JSON.parse(fullArgs);
+                } catch {
+                  return null;
+                }
+              })()} 
+            />
+          ) : null}
         </Box>
       ) : null}
     </Box>

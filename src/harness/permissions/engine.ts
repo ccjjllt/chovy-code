@@ -434,20 +434,40 @@ export async function hasPermission(
         reason: "permission required and no interactive prompt available",
       };
     }
-    // Interactive but no askUser wired (step-22 not landed) → deny with a
+    // Interactive but no askPermission wired → deny with a
     // clear INTERNAL pointer so the model learns the UI isn't ready.
-    if (!ctx.askUser) {
+    if (!ctx.askPermission) {
       noteDenial(state);
       maybeTripBreaker(state);
       return {
         outcome: "deny",
-        reason: "permission required but askUser UI not wired (step-22)",
+        reason: "permission required but askPermission UI not wired (step-30+)",
       };
     }
-    // step-22 will supply askUser; until then this branch is unreachable in
-    // practice (isInteractive true ⇒ askUser absent ⇒ caught above). Kept so
-    // the wiring is obvious when step-22 lands.
-    return { outcome: "ask", reason: "pending user confirmation" };
+    
+    // We have an interactive prompt! Let's pause and ask the user.
+    try {
+      const ans = await ctx.askPermission(toolName, args, "pending user confirmation", ctx.abortSignal);
+      if (ans === "deny") {
+        noteDenial(state);
+        maybeTripBreaker(state);
+        return { outcome: "deny", reason: "User explicitly denied execution" };
+      } else if (ans === "always") {
+        // Elevate mode to auto if it was not, or just note success.
+        // We do not persist to config here, just state for this session.
+        state.mode = "auto";
+        state.autoDowngraded = false;
+        noteSuccess(state);
+        return { outcome: "allow", reason: "User granted 'always' for this session" };
+      } else {
+        noteSuccess(state);
+        return { outcome: "allow", reason: "User approved this time" };
+      }
+    } catch (e) {
+      noteDenial(state);
+      maybeTripBreaker(state);
+      return { outcome: "deny", reason: `Prompt aborted or failed: ${e instanceof Error ? e.message : String(e)}` };
+    }
   }
 
   // No objection and mode allows mutation without asking (or the tool is

@@ -57,3 +57,4 @@
 - **Phase L**: [x] 命令面板系统已验收，支持模糊与拼音匹配，接入了多个指令源并剔除了未实现的桩代码，可见指令池稳定达到 144 项。（见 `docs/complete/phase-l-acceptance.md`）
 - **Phase M**: [x] Welcome & Header v2 已验收，支持自适应双栏与折叠 chip，持久化记录引导状态与智能动态提示。（见 `docs/complete/phase-m-acceptance.md`）
 - **Phase N**: [x] 设置系统与向导重构已验收，B10 屏障已冻结，SettingsScreen 的 7 类设置项就位，`runConfigWizard` 已统一调用单源 `runFieldOnce`。检测机制与安全红线均通过。（见 `docs/complete/phase-n-acceptance.md`）
+- **Phase O**: [x] 细节与交互打磨阶段已验收。补齐了基于界面的交互式用户授权（`AskUserOverlay`、`PermissionPromptOverlay`）以及 Diff 视图组件。TUI 各覆盖层间的焦点轮转机制已完善（`askUser` 模态保护），彻底打通 Agent 发起的询问流。（见 `docs/complete/phase-o-acceptance.md`）

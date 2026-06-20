@@ -101,7 +101,10 @@ export interface AgentOptions {
    */
   abortSignal?: AbortSignal;
   /** Optional `ask_user_question` callback supplied by the UI (step-22). */
+  /** Optional `ask_user_question` callback supplied by the UI (step-22). */
   askUser?: ToolContext["askUser"];
+  /** Optional interactive permission callback supplied by the UI. */
+  askPermission?: ToolContext["askPermission"];
   /** Honors `process.stdin.isTTY` by default; UI may override. */
   isInteractive?: ToolContext["isInteractive"];
   /** Permission mode for this run (step-12). Defaults to `config.permissionMode`. */
@@ -210,6 +213,7 @@ function buildRunOptions(
     agentId: opts.agentId,
     parentId: opts.parentId,
     askUser: opts.askUser,
+    askPermission: opts.askPermission,
     isInteractive: opts.isInteractive,
     toolAllowlist: opts.toolAllowlist,
     toolDenylist: opts.toolDenylist,

@@ -5,6 +5,9 @@ import { onSwarmEvent } from "../agent/swarmBus.js";
 import { checkpointEvents } from "../memory/index.js";
 import { showToast } from "./components/toastBus.js";
 import { ToastHost } from "./components/ToastHost.js";
+import { AskUserOverlay, openAskUser } from "./components/AskUserOverlay.js";
+import { PermissionPromptOverlay, openPermissionPrompt } from "./components/PermissionPrompt.js";
+import { TodoPanel } from "./components/TodoPanel.js";
 import { runAgent } from "../agent/index.js";
 import { getSubAgentPool } from "../agent/index.js";
 import { listProviders } from "../providers/index.js";
@@ -709,6 +712,8 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
         permissionMode: mode,
         session: sessionRef.current,
         goalObjective: goalState?.objective,
+        askUser: (specs) => openAskUser(specs),
+        askPermission: (toolName, args, reason) => openPermissionPrompt(toolName, args, reason),
         onToken: (delta) => {
           if (cancelledRef.current) return;
           buf += delta;
@@ -896,6 +901,11 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
         ) : null}
 
         <ToastHost />
+        <AskUserOverlay />
+        <PermissionPromptOverlay />
+        {sessionRef.current?.todoList ? (
+          <TodoPanel todos={sessionRef.current.todoList.map(t => t.content)} />
+        ) : null}
 
         <Box marginTop={1} flexDirection="row" alignItems="flex-end">
           <Box flexGrow={1} flexDirection="column" width={caps.cols - companionReservedColumns(caps.cols, speaking)}>

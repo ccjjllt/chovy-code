@@ -1,11 +1,11 @@
 import { useSyncExternalStore } from "react";
 
-export type FocusTarget = "input" | "palette" | "settings" | "swarm" | "goal" | "companion";
+export type FocusTarget = "input" | "palette" | "settings" | "swarm" | "goal" | "companion" | "askUser";
 
 export interface FocusState {
   current: FocusTarget;
   hidden: Set<FocusTarget>;
-  modality?: "palette" | "settings";
+  modality?: "palette" | "settings" | "askUser";
 }
 
 type Listener = () => void;
@@ -71,7 +71,7 @@ export function setFocus(target: FocusTarget) {
   });
 }
 
-export function setModality(modality: "palette" | "settings" | undefined) {
+export function setModality(modality: "palette" | "settings" | "askUser" | undefined) {
   _focusStore.setState((s) => {
     const nextCurrent = modality ? modality : "input";
     return { ...s, modality, current: nextCurrent };

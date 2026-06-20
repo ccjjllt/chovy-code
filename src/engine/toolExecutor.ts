@@ -124,10 +124,7 @@ export async function executeToolCall(
         });
       } catch { /* swallowed inside emit; defensive */ }
     }
-    const message =
-      decision.outcome === "deny"
-        ? `Permission denied: ${decision.reason}`
-        : `Permission pending (ask): ${decision.reason}`;
+    const message = `Permission denied: ${decision.reason}`;
     opts.onToolEnd?.(call.name, {
       ok: false,
       content: message,
