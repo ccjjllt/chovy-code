@@ -1,6 +1,7 @@
 import { listThemes, setTheme, resetTheme, setCustomTheme, createTheme, getTheme } from "../../theme/index.js";
 import type { SlashEntry } from "../slashCommands.js";
 import { t } from "../../i18n/index.js";
+import { showToast } from "../components/toastBus.js";
 
 export const themeSlashEntry: SlashEntry = {
   help: t("slash.theme.desc"),
@@ -32,16 +33,16 @@ export const themeSlashEntry: SlashEntry = {
       }
       try {
         setTheme(name);
-        ctx.appendSystem(`主题已切换为 ${name}`);
+        showToast({ variant: "success", text: `主题已切换为 ${name}` });
       } catch (e: any) {
-        ctx.appendSystem(`切换失败: ${e.message}`);
+        showToast({ variant: "error", text: `切换失败: ${e.message}` });
       }
       return;
     }
 
     if (sub === "reset") {
       resetTheme();
-      ctx.appendSystem("主题已重置为 ChovyDefault，清空自定义颜色。");
+      showToast({ variant: "success", text: "主题已重置为 ChovyDefault，清空自定义颜色。" });
       return;
     }
 
@@ -59,7 +60,7 @@ export const themeSlashEntry: SlashEntry = {
         }
       }
       setCustomTheme(custom);
-      ctx.appendSystem("已应用自定义主题颜色。");
+      showToast({ variant: "success", text: "已应用自定义主题颜色。" });
       return;
     }
 
@@ -78,7 +79,7 @@ export const themeSlashEntry: SlashEntry = {
         }
       }
       createTheme(name, custom);
-      ctx.appendSystem(`新主题 ${name} 已创建并应用。`);
+      showToast({ variant: "success", text: `新主题 ${name} 已创建并应用。` });
       return;
     }
 

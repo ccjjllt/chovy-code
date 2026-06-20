@@ -48,6 +48,7 @@
  *     in `void` so the goal loop is never blocked.
  */
 
+import { EventEmitter } from "node:events";
 import { logger } from "../logger/index.js";
 import { emitTelemetry } from "../telemetry/index.js";
 import {
@@ -57,6 +58,9 @@ import {
   latestCheckpointFile,
   ensureProjectDirs,
 } from "../fs/index.js";
+
+export const checkpointEvents = new EventEmitter();
+
 // Reach the leaf `agent/pool.js` rather than the `agent/index` barrel: the
 // barrel re-exports `runAgent` whose top-level `setSpawnFnBuilder(...)`
 // call closes the engine → memory → agent → engine cycle (TDZ on the

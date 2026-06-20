@@ -10,6 +10,11 @@ export const en = {
     search: { placeholder: "Search" },
     section: { recommend: "Recommended", session: "Session" },
   },
+  msg: {
+    tool: { errorCode: "Error code: {{ code }}" },
+    fold: { more: " [...expand {{ n }} chars]" },
+    reasoning: { summary: "Reasoning process" },
+  },
   slash: {
     help: { desc: "Show help overlay" },
     goal: { desc: "Start a long-horizon goal loop" },

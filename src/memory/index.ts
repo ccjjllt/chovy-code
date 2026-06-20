@@ -121,4 +121,5 @@ export {
   type CheckpointInput,
   type CheckpointResult,
   type CheckpointCoordinatorDeps,
+  checkpointEvents,
 } from "./checkpointWriter.js";

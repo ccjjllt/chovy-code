@@ -10,6 +10,11 @@ export const zh = {
     search: { placeholder: "搜索" },
     section: { recommend: "推荐", session: "会话" },
   },
+  msg: {
+    tool: { errorCode: "错误代码: {{ code }}" },
+    fold: { more: " [...展开 {{ n }} 字符]" },
+    reasoning: { summary: "思考过程" },
+  },
   slash: {
     help: { desc: "显示帮助浮层" },
     goal: { desc: "进入长程任务循环" },

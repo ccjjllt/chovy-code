@@ -93,6 +93,8 @@ export interface AgentOptions {
   onToken?: (delta: string) => void;
   /** Called whenever the agent executes a tool. */
   onToolCall?: (name: string, args: unknown) => void;
+  /** Called whenever a message is fully resolved (e.g. tool execution ends). */
+  onMessage?: (msg: ChatMessage) => void;
   /**
    * External abort signal. Sub-agents MUST construct their own (AGENTS.md §9);
    * the engine internally wraps whatever we pass in a fresh AbortController.
@@ -216,6 +218,7 @@ function buildRunOptions(
     budgetUSD: opts.budgetUSD,
     onHookMessage: opts.onHookMessage,
     onToken: opts.onToken,
+    onMessage: opts.onMessage,
     onContextSnapshot: opts.onContextSnapshot,
     onUsage: opts.onUsage,
     onToolStart: opts.onToolCall

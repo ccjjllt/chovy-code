@@ -7,6 +7,13 @@ export interface ChatMessage {
   /** Present when role === "assistant": tool calls the model requested. */
   toolCalls?: ToolCall[];
 
+  /** Present when role === "tool": the parsed arguments given to the tool. */
+  toolArgs?: unknown;
+  /** Present when role === "tool": the metadata of the tool execution result. */
+  toolResultMeta?: import("./tool.js").ToolResultMeta;
+  /** Present when role === "tool": the errorCode if ok === false. */
+  toolErrorCode?: string;
+
   // ── Persistence / observability (step-01 additive; safe to ignore) ───────
   /** Stable id; written by the memory store (step-24) and session log. */
   id?: string;

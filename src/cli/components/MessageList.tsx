@@ -1,5 +1,8 @@
-import React from "react";
-import { Box, Text } from "ink";
+import React, { useState, useEffect } from "react";
+import { Box, useInput } from "ink";
+import type { ToolResultMeta } from "../../types/index.js";
+import { selectVisible, clampScrollTop } from "./messageListState.js";
+import { MessageRow } from "./MessageRow.js";
 
 export type UIRole = "user" | "assistant" | "tool" | "system";
 
@@ -13,47 +16,44 @@ export interface UIMessage {
   interrupted?: boolean;
   /** Set on tool-role messages. */
   toolName?: string;
+  
+  // Metadata for tool messages (step-54)
+  toolArgs?: unknown;
+  toolResultMeta?: ToolResultMeta;
+  toolErrorCode?: string;
 }
 
 interface Props {
   messages: UIMessage[];
 }
 
-const ROLE_GLYPH: Record<UIRole, { glyph: string; color: string }> = {
-  user: { glyph: "❯", color: "cyan" },
-  assistant: { glyph: "✦", color: "white" },
-  tool: { glyph: "⚙", color: "magenta" },
-  system: { glyph: "•", color: "gray" },
-};
-
 /**
- * Linear, append-only message list. Step-22 will replace this with a
- * virtualised version once the swarm UI lands; keeping it intentionally
- * dumb here so step-05's REPL has something to render today.
+ * MessageList with virtualization (step-54).
  */
 export function MessageList({ messages }: Props): React.ReactElement {
+  const [scrollTop, setScrollTop] = useState(0);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    setScrollTop(Math.max(0, messages.length - 30));
+  }, [messages.length]);
+
+  useInput((_input, key) => {
+    if (key.pageUp) {
+      setScrollTop((s) => clampScrollTop(s - 10, messages.length));
+    }
+    if (key.pageDown) {
+      setScrollTop((s) => clampScrollTop(s + 10, messages.length));
+    }
+  });
+
+  const visible = selectVisible(messages, scrollTop);
+
   return (
     <Box flexDirection="column" gap={1}>
-      {messages.map((m) => {
-        const meta = ROLE_GLYPH[m.role];
-        const label = m.role === "tool" && m.toolName
-          ? `${meta.glyph} ${m.toolName}`
-          : meta.glyph;
-        return (
-          <Box key={m.id} flexDirection="column">
-            <Box>
-              <Text color={meta.color} bold>{label}</Text>
-              {m.pending ? <Text dimColor>{"  …"}</Text> : null}
-              {m.interrupted ? (
-                <Text color="yellow">{"  [interrupted]"}</Text>
-              ) : null}
-            </Box>
-            <Box paddingLeft={2}>
-              <Text>{m.content}</Text>
-            </Box>
-          </Box>
-        );
-      })}
+      {visible.map((m) => (
+        <MessageRow key={m.id} msg={m} />
+      ))}
     </Box>
   );
 }

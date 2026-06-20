@@ -195,6 +195,9 @@ export async function executeToolCall(
     role: "tool",
     toolName: call.name,
     content: output,
+    toolArgs: parsed.data,
+    toolResultMeta: toolResult.meta,
+    toolErrorCode: toolResult.errorCode,
     ts: Date.now(),
   };
 }

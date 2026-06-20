@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
+import { t } from "../i18n/index.js";
+import { onSwarmEvent } from "../agent/swarmBus.js";
+import { checkpointEvents } from "../memory/index.js";
+import { showToast } from "./components/toastBus.js";
+import { ToastHost } from "./components/ToastHost.js";
 import { runAgent } from "../agent/index.js";
 import { getSubAgentPool } from "../agent/index.js";
 import { listProviders } from "../providers/index.js";
@@ -117,9 +122,31 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
     });
     return () => {
       unsubscribe();
-      companionRef.current?.dispose();
     };
   }, [sm]);
+
+  // Toast events
+  useEffect(() => {
+    const offSwarm = onSwarmEvent((ev: any) => {
+      if (ev.type === "lifecycle" && ev.event === "completed" && ev.role === "main_dispatch_done") {
+        showToast({ variant: "success", text: t("toast.swarm.done", { ok: ev.okCount, total: ev.total }) });
+      }
+    });
+
+    const onWritten = (path: string) => {
+      let shortPath = path;
+      if (path.length > 30) {
+        shortPath = "..." + path.slice(-27);
+      }
+      showToast({ variant: "info", text: t("toast.checkpoint.written", { path: shortPath }) });
+    };
+    checkpointEvents.on("written", onWritten);
+
+    return () => {
+      offSwarm();
+      checkpointEvents.off("written", onWritten);
+    };
+  }, []);
 
   const { open: paletteOpen } = usePaletteState();
   const { open: settingsOpen } = useSettingsState();
@@ -637,7 +664,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
       await entry.handler(args, ctx);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      appendSystem(`/${name} 执行失败：${msg}`);
+      showToast({ variant: "error", text: t("toast.cmdFailed", { name, msg }) });
     }
   }, [appendSystem, ctx]);
 
@@ -801,28 +828,7 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
 
         {onboardingShow ? <OnboardingHint /> : null}
 
-        {showGoalPanel && goalState ? (
-          <Box marginTop={1}>
-            <GoalPanel
-              goal={goalState}
-              focused={focus === "goal"}
-              onPause={() => {
-                goalAcRef.current?.abort();
-                const cur = goalState;
-                if (cur) {
-                  finalizeGoal(cur.threadId, "paused");
-                  setGoalState({ ...cur, status: "paused" });
-                }
-                appendSystem("Goal paused（/goal resume 可继续）。");
-              }}
-              onCancel={() => {
-                goalAcRef.current?.abort();
-                setGoalState(null);
-                appendSystem("Goal cancelled.");
-              }}
-            />
-          </Box>
-        ) : null}
+
 
         {showWelcome ? (
           <Box marginTop={1} marginBottom={1}>
@@ -865,6 +871,31 @@ export function ChovyRepl({ provider, model, initialMode }: Props): React.ReactE
             />
           </Box>
         ) : null}
+
+        {showGoalPanel && goalState ? (
+          <Box marginTop={1}>
+            <GoalPanel
+              goal={goalState}
+              focused={focus === "goal"}
+              onPause={() => {
+                goalAcRef.current?.abort();
+                const cur = goalState;
+                if (cur) {
+                  finalizeGoal(cur.threadId, "paused");
+                  setGoalState({ ...cur, status: "paused" });
+                }
+                showToast({ variant: "info", text: "Goal paused（/goal resume 可继续）。" });
+              }}
+              onCancel={() => {
+                goalAcRef.current?.abort();
+                setGoalState(null);
+                showToast({ variant: "info", text: "Goal cancelled." });
+              }}
+            />
+          </Box>
+        ) : null}
+
+        <ToastHost />
 
         <Box marginTop={1} flexDirection="row" alignItems="flex-end">
           <Box flexGrow={1} flexDirection="column" width={caps.cols - companionReservedColumns(caps.cols, speaking)}>

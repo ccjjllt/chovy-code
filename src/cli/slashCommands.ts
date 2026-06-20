@@ -11,6 +11,7 @@ import { langSlashEntry } from "./slashCommands/lang.js";
 import { buddySlashEntry } from "./slashCommands/buddy.js";
 import { settingsSlashEntry } from "./slashCommands/settings.js";
 import { t } from "../i18n/index.js";
+import { showToast } from "./components/toastBus.js";
 
 /**
  * Read-only/mutator surface that slash command handlers receive. Keeping
@@ -234,7 +235,11 @@ export const slashCommands: Record<string, SlashEntry> = {
 
   clear: {
     help: t("slash.clear.desc"),
-    handler: (_args, ctx) => { ctx.clearMessages(); ctx.toggleHelp(false); },
+    handler: (_args, ctx) => { 
+      ctx.clearMessages(); 
+      ctx.toggleHelp(false);
+      showToast({ variant: "success", text: t("toast.cleared") });
+    },
   },
 
   mode: {
